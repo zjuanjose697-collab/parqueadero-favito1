@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parqueadero Favito POS Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col">
+
+    <header class="bg-gray-800 border-b border-gray-700 px-6 py-4 flex justify-between items-center shadow-lg">
+        <div class="flex items-center space-x-3">
+            <div class="bg-blue-600 p-2 rounded-lg text-white">
+                <i class="fa-solid fa-square-parking text-2xl"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-wide text-white">Parqueadero Favito</h1>
+                <p class="text-xs text-gray-400">POS Pro, Lavadero & Vulcanizadora</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-4">
+            {% if turno_activo %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
+                    <span class="w-2 h-2 mr-2 bg-green-400 rounded-full animate-ping"></span> Caja Abierta (Base: ${{ "%.2f"|format(turno_activo.monto_inicial) }})
+                </span>
+                <button onclick="cerrarCajaModal({{ turno_activo.id }})" class="bg-red-600/80 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded transition">
+                    Cerrar Caja (Reporte Z)
+                </button>
+            {% else %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">
+                    Caja Cerrada
+                </span>
+                <button onclick="abrirCajaModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded transition">
+                    Abrir Caja
+                </button>
+            {% endif %}
+        </div>
+    </header>
+
+    <div class="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="bg-gray-800 p-4 rounded-xl border border-gray-700 flex justify-between items-center">
+                <div>
+                    <p class="text-xs font-semibold text-gray-400 uppercase">Vehículos Entrados Hoy</p>
+                    <h3 class="text-2xl font-bold text-white mt-1">{{ vehiculos_hoy }}</h3>
+                </div>
+                <div class="bg-blue-500/10 p-3 rounded-lg text-blue-400"><i class="fa-solid fa-car text-xl"></i></div>
+            </div>
+
+            <div class="bg-gray-800 p-4 rounded-xl border border-gray-700 flex justify-between items-center">
+                <div>
+                    <p class="text-xs font-semibold text-gray-400 uppercase">Ocupación Celdas</p>
+                    <h3 class="text-2xl font-bold text-amber-400 mt-1">{{ activos|length }} / 50</h3>
+                </div>
+                <div class="bg-amber-500/10 p-3 rounded-lg text-amber-400"><i class="fa-solid fa-warehouse text-xl"></i></div>
+            </div>
+
+            <div class="bg-gray-800 p-4 rounded-xl border border-gray-700 flex justify-between items-center">
+                <div>
+                    <p class="text-xs font-semibold text-gray-400 uppercase">Ventas Turno Activo</p>
+                    <h3 class="text-2xl font-bold text-emerald-400 mt-1">${{ "%.2f"|format(ingresos_hoy) }}</h3>
+                </div>
+                <div class="bg-emerald-500/10 p-3 rounded-lg text-emerald-400"><i class="fa-solid fa-cash-register text-xl"></i></div>
+            </div>
+
+            <div class="bg-gray-800 p-4 rounded-xl border border-gray-700 flex justify-between items-center">
+                <div>
+                    <p class="text-xs font-semibold text-gray-400 uppercase">Gastos Turno Activo</p>
+                    <h3 class="text-2xl font-bold text-red-400 mt-1">${{ "%.2f"|format(gastos_hoy) }}</h3>
+                </div>
+                <div class="bg-red-500/10 p-3 rounded-lg text-red-400"><i class="fa-solid fa-receipt text-xl"></i></div>
+            </div>
+        </div>
+
+        <div class="border-b border-gray-700 flex space-x-6 text-sm font-medium">
+            <button onclick="switchTab('mapa')" id="btn-mapa" class="tab-btn pb-3 text-blue-500 border-b-2 border-blue-500 flex items-center space-x-2">
+                <i class="fa-solid fa-map"></i><span>Mapa 5 Zonas</span>
+            </button>
+            <button onclick="switchTab('registro')" id="btn-registro" class="tab-btn pb-3 text-gray-400 hover:text-gray-200 flex items-center space-x-2">
+                <i class="fa-solid fa-right-to-bracket"></i><span>Entradas y Cobros POS</span>
+            </button>
+            <button onclick="switchTab('gastos')" id="btn-gastos" class="tab-btn pb-3 text-gray-400 hover:text-gray-200 flex items-center space-x-2">
+                <i class="fa-solid fa-wallet"></i><span>Control Gastos</span>
+            </button>
+            <button onclick="switchTab('contabilidad')" id="btn-contabilidad" class="tab-btn pb-3 text-gray-400 hover:text-gray-200 flex items-center space-x-2">
+                <i class="fa-solid fa-chart-pie"></i><span>Auditoría Contable</span>
+            </button>
+            <button onclick="switchTab('ajustes')" id="btn-ajustes" class="tab-btn pb-3 text-gray-400 hover:text-gray-200 flex items-center space-x-2">
+                <i class="fa-solid fa-sliders"></i><span>Ajuste de Precios</span>
+            </button>
+        </div>
+
+        <!-- TAB 1: MAPA -->
+        <div id="tab-mapa" class="tab-content space-y-6">
+            <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+                <h2 class="text-lg font-bold mb-4 flex items-center gap-2"><i class="fa-solid fa-border-all text-blue-400"></i> Estado de Secciones</h2>
+                <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                    {% set secciones = [
+                        ('Zona 1: Motos', 1, 10, 'fa-motorcycle'),
+                        ('Zona 2: Carros', 11, 20, 'fa-car'),
+                        ('Zona 3: Volquetas', 21, 30, 'fa-truck-field'),
+                        ('Zona 4: Especial A', 31, 40, 'fa-truck-pickup'),
+                        ('Zona 5: Especial B', 41, 50, 'fa-van-shuttle')
+                    ] %}
+                    {% for titulo, inicio, fin, icono in secciones %}
+                    <div class="bg-gray-900/60 p-4 rounded-lg border border-gray-700">
+                        <p class="text-xs font-bold text-gray-300 mb-3 flex items-center gap-2"><i class="fa-solid {{ icono }} text-blue-400"></i> {{ titulo }}</p>
+                        <div class="grid grid-cols-2 gap-2">
+                            {% for n in range(inicio, fin + 1) %}
+                                {% set ocupado = n in espacios_ocupados %}
+                                <div class="p-2 rounded border text-center text-xs font-bold {{ 'bg-red-500/20 border-red-500/50 text-red-300' if ocupado else 'bg-green-500/10 border-green-500/30 text-green-400' }}">
+                                    E-{{ n }}
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: ENTRADAS Y COBROS -->
+        <div id="tab-registro" class="tab-content hidden space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+                    <h2 class="text-lg font-bold mb-4 text-blue-400"><i class="fa-solid fa-plus-circle"></i> Ingresar Vehículo</h2>
+                    <form onsubmit="registrarIngreso(event)" class="space-y-4">
+                        <div>
+                            <label class="text-xs text-gray-400">Placa</label>
+                            <input type="text" id="ing_placa" required placeholder="ABC-123" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white uppercase">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400">Tipo de Vehículo</label>
+                            <select id="ing_tipo" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white">
+                                <option value="Moto">Moto</option>
+                                <option value="Carro">Carro</option>
+                                <option value="Volqueta">Volqueta</option>
+                                <option value="Zona 4 (Especial)">Zona 4 (Especial)</option>
+                                <option value="Zona 5 (Especial)">Zona 5 (Especial)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400">Nombre Conductor</label>
+                            <input type="text" id="ing_propietario" required placeholder="Juan Pérez" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-xs text-gray-400">Sección</label>
+                                <select id="ing_seccion" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white">
+                                    <option value="Zona 1">Zona 1 (Motos)</option>
+                                    <option value="Zona 2">Zona 2 (Carros)</option>
+                                    <option value="Zona 3">Zona 3 (Volquetas)</option>
+                                    <option value="Zona 4">Zona 4</option>
+                                    <option value="Zona 5">Zona 5</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400">Espacio # (1-50)</label>
+                                <input type="number" id="ing_espacio" min="1" max="50" required placeholder="Ej: 5" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white">
+                            </div>
+                        </div>
+                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded text-sm transition">Registrar Entrada</button>
+                    </form>
+                </div>
+
+                <div class="lg:col-span-2 bg-gray-800 p-6 rounded-xl border border-gray-700">
+                    <h2 class="text-lg font-bold mb-4 text-amber-400"><i class="fa-solid fa-clock-rotate-left"></i> Vehículos Adentro (Liquidación POS)</h2>
+                    <table class="w-full text-left text-xs text-gray-300">
+                        <thead class="bg-gray-900 text-gray-400 uppercase">
+                            <tr>
+                                <th class="p-3">Placa</th>
+                                <th class="p-3">Tipo</th>
+                                <th class="p-3">Espacio</th>
+                                <th class="p-3">Hora Entrada</th>
+                                <th class="p-3 text-right">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-700/50">
+                            {% for v in activos %}
+                            <tr class="hover:bg-gray-700/30">
+                                <td class="p-3 font-bold text-white">{{ v.placa }}</td>
+                                <td class="p-3"><span class="bg-gray-700 px-2 py-0.5 rounded">{{ v.tipo_vehiculo }}</span></td>
+                                <td class="p-3 font-semibold text-blue-400">E-{{ v.espacio }}</td>
+                                <td class="p-3 text-gray-400">{{ v.hora_entrada }}</td>
+                                <td class="p-3 text-right">
+                                    <button onclick="abrirModalCobro({{ v.id }}, '{{ v.placa }}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded transition">
+                                        Cobrar / Salida POS
+                                    </button>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="5" class="text-center py-6 text-gray-500">Sin vehículos en parqueadero.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: GASTOS -->
+        <div id="tab-gastos" class="tab-content hidden">
+            <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 max-w-lg mx-auto">
+                <h2 class="text-lg font-bold mb-4 text-red-400"><i class="fa-solid fa-wallet"></i> Registrar Gasto Operativo</h2>
+                <form onsubmit="registrarGasto(event)" class="space-y-4">
+                    <div>
+                        <label class="text-xs text-gray-400">Concepto del Gasto</label>
+                        <input type="text" id="gasto_concepto" required placeholder="Ej: Jabón lavadero / compra insumos" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white">
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-400">Monto ($)</label>
+                        <input type="number" id="gasto_monto" required placeholder="25000" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white">
+                    </div>
+                    <button type="submit" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded text-sm transition">Guardar Gasto</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- TAB 4: CONTABILIDAD -->
+        <div id="tab-contabilidad" class="tab-content hidden space-y-6">
+            <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+                <h2 class="text-lg font-bold mb-4 text-indigo-400"><i class="fa-solid fa-chart-line"></i> Utilidad Neta Real (Turno Activo)</h2>
+                <div class="grid grid-cols-3 gap-4 text-center">
+                    <div class="bg-gray-900 p-4 rounded-lg border border-emerald-500/30">
+                        <p class="text-xs text-gray-400">Ingresos Totales</p>
+                        <p class="text-xl font-bold text-emerald-400">${{ "%.2f"|format(ingresos_hoy) }}</p>
+                    </div>
+                    <div class="bg-gray-900 p-4 rounded-lg border border-red-500/30">
+                        <p class="text-xs text-gray-400">Gastos Registrados</p>
+                        <p class="text-xl font-bold text-red-400">${{ "%.2f"|format(gastos_hoy) }}</p>
+                    </div>
+                    <div class="bg-gray-900 p-4 rounded-lg border border-blue-500/30">
+                        <p class="text-xs text-gray-400">Ganancia Neta Limpia</p>
+                        <p class="text-xl font-bold text-blue-400">${{ "%.2f"|format(ingresos_hoy - gastos_hoy) }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 5: AJUSTE DE PRECIOS -->
+        <div id="tab-ajustes" class="tab-content hidden space-y-6">
+            <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+                <h2 class="text-lg font-bold mb-4 text-amber-400 flex items-center gap-2">
+                    <i class="fa-solid fa-clock"></i> Tarifas de Parqueo (Hora, Día y Mes)
+                </h2>
+                <div class="space-y-3">
+                    {% for tipo, t in tarifas.items() %}
+                    <div class="bg-gray-900 p-4 rounded-lg border border-gray-700 flex flex-wrap justify-between items-center gap-4">
+                        <div><p class="font-bold text-white text-sm">{{ tipo }}</p></div>
+                        <div class="flex items-center space-x-3 text-xs">
+                            <div>
+                                <label class="text-gray-400 block mb-1">Valor Hora ($)</label>
+                                <input type="number" id="hora_{{ tipo }}" value="{{ t.tarifa_hora }}" class="w-24 bg-gray-800 border border-gray-600 text-right text-white rounded p-1">
+                            </div>
+                            <div>
+                                <label class="text-gray-400 block mb-1">Valor Día ($)</label>
+                                <input type="number" id="dia_{{ tipo }}" value="{{ t.tarifa_dia }}" class="w-24 bg-gray-800 border border-gray-600 text-right text-white rounded p-1">
+                            </div>
+                            <div>
+                                <label class="text-gray-400 block mb-1">Valor Mes ($)</label>
+                                <input type="number" id="mes_{{ tipo }}" value="{{ t.tarifa_mes }}" class="w-28 bg-gray-800 border border-gray-600 text-right text-white rounded p-1">
+                            </div>
+                            <button onclick="guardarTarifasCompleta('{{ tipo }}')" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-2 rounded text-xs self-end">
+                                Guardar
+                            </button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+                <h2 class="text-lg font-bold mb-4 text-emerald-400 flex items-center gap-2">
+                    <i class="fa-solid fa-tags"></i> Catálogo: Parches, Neumáticos, Válvulas y Lavado
+                </h2>
+                <div class="overflow-x-auto max-h-96">
+                    <table class="w-full text-left text-xs text-gray-300">
+                        <thead class="bg-gray-900 text-gray-400 uppercase sticky top-0">
+                            <tr>
+                                <th class="p-3">Ítem / Referencia</th>
+                                <th class="p-3">Categoría</th>
+                                <th class="p-3">Precio Venta ($)</th>
+                                <th class="p-3">Costo Compra ($)</th>
+                                <th class="p-3">Stock Actual</th>
+                                <th class="p-3 text-right">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-700/50">
+                            {% for p in productos %}
+                            <tr class="hover:bg-gray-700/30">
+                                <td class="p-3 font-bold text-white">{{ p.nombre }}</td>
+                                <td class="p-3"><span class="bg-gray-700 px-2 py-0.5 rounded">{{ p.categoria }}</span></td>
+                                <td class="p-3">
+                                    <input type="number" id="precio_{{ p.id }}" value="{{ p.precio_venta }}" class="w-24 bg-gray-900 border border-gray-600 text-right text-white rounded p-1">
+                                </td>
+                                <td class="p-3">
+                                    <input type="number" id="costo_{{ p.id }}" value="{{ p.costo_compra }}" class="w-24 bg-gray-900 border border-gray-600 text-right text-white rounded p-1">
+                                </td>
+                                <td class="p-3">
+                                    <input type="number" id="stock_{{ p.id }}" value="{{ p.stock }}" class="w-20 bg-gray-900 border border-gray-600 text-center text-white rounded p-1">
+                                </td>
+                                <td class="p-3 text-right">
+                                    <button onclick="guardarProducto({{ p.id }})" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded transition">
+                                        Guardar
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- MODAL: COBRO POS -->
+    <div id="modalCobro" class="fixed inset-0 bg-black/70 hidden flex items-center justify-center p-4">
+        <div class="bg-gray-800 border border-gray-700 rounded-xl max-w-md w-full p-6 space-y-4">
+            <h3 class="text-lg font-bold text-white flex items-center gap-2"><i class="fa-solid fa-calculator text-emerald-400"></i> Cobro de Ticket: <span id="modalPlaca" class="text-blue-400"></span></h3>
+            <input type="hidden" id="modalTicketId">
+            
+            <div>
+                <label class="text-xs text-gray-400 mb-2 block">Añadir Servicios / Lavado / Repuestos:</label>
+                <div class="space-y-2 max-h-56 overflow-y-auto bg-gray-900 p-2 rounded border border-gray-700">
+                    {% for p in productos %}
+                    <label class="flex items-center justify-between text-xs p-1 hover:bg-gray-800 rounded cursor-pointer">
+                        <span class="flex items-center gap-2">
+                            <input type="checkbox" value="{{ p.id }}" class="chk-servicio rounded text-blue-600">
+                            {{ p.nombre }}
+                        </span>
+                        <span class="font-bold text-emerald-400">${{ p.precio_venta }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div>
+                <label class="text-xs text-gray-400">Método de Pago</label>
+                <select id="modalMetodo" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white">
+                    <option value="EFECTIVO">Efectivo</option>
+                    <option value="NEQUI">Nequi / Transferencia</option>
+                    <option value="TARJETA">Tarjeta Débito/Crédito</option>
+                </select>
+            </div>
+
+            <div class="flex justify-end space-x-2 pt-2">
+                <button onclick="cerrarModal('modalCobro')" class="px-4 py-2 bg-gray-700 text-xs text-gray-300 rounded hover:bg-gray-600">Cancelar</button>
+                <button onclick="confirmarCobro()" class="px-4 py-2 bg-emerald-600 text-xs text-white font-bold rounded hover:bg-emerald-700">Procesar Pago & Liberar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('text-blue-500', 'border-b-2', 'border-blue-500');
+                el.classList.add('text-gray-400');
+            });
+            document.getElementById('tab-' + tabId).classList.remove('hidden');
+            document.getElementById('btn-' + tabId).classList.add('text-blue-500', 'border-b-2', 'border-blue-500');
+            document.getElementById('btn-' + tabId).classList.remove('text-gray-400');
+        }
+
+        function abrirCajaModal() {
+            const base = prompt("Ingrese el monto inicial de la caja (Base en Efectivo):", "50000");
+            if (base !== null) {
+                fetch('/api/turno/abrir', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ monto_inicial: base })
+                }).then(r => r.json()).then(d => { alert(d.mensaje); location.reload(); });
+            }
+        }
+
+        function cerrarCajaModal(turnoId) {
+            const efectivo = prompt("Ingrese el total de dinero FÍSICO contado en caja (Reporte Z):");
+            if (efectivo !== null) {
+                fetch('/api/turno/cerrar', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ turno_id: turnoId, efectivo_real: efectivo })
+                }).then(r => r.json()).then(d => {
+                    alert(`✅ ${d.mensaje}\nEfectivo Esperado: $${d.esperado}\nDiferencia: $${d.diferencia}`);
+                    location.reload();
+                });
+            }
+        }
+
+        function registrarIngreso(e) {
+            e.preventDefault();
+            const payload = {
+                placa: document.getElementById('ing_placa').value,
+                tipo: document.getElementById('ing_tipo').value,
+                propietario: document.getElementById('ing_propietario').value,
+                seccion: document.getElementById('ing_seccion').value,
+                espacio: parseInt(document.getElementById('ing_espacio').value)
+            };
+            fetch('/api/ingreso', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            }).then(r => r.json()).then(d => {
+                if(d.error) alert(d.error); else { alert(d.mensaje); location.reload(); }
+            });
+        }
+
+        function abrirModalCobro(id, placa) {
+            document.getElementById('modalTicketId').value = id;
+            document.getElementById('modalPlaca').innerText = placa;
+            document.getElementById('modalCobro').classList.remove('hidden');
+        }
+
+        function cerrarModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        function confirmarCobro() {
+            const ticketId = document.getElementById('modalTicketId').value;
+            const metodo = document.getElementById('modalMetodo').value;
+            const servicios = Array.from(document.querySelectorAll('.chk-servicio:checked')).map(cb => parseInt(cb.value));
+
+            fetch('/api/cobrar', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ ticket_id: ticketId, metodo_pago: metodo, servicios: servicios })
+            }).then(r => r.json()).then(d => {
+                if(d.error) alert(d.error);
+                else {
+                    alert(`✅ Cobro Exitoso\nTiempo Registrado: ${d.tiempo_desglose}\nTOTAL A COBRAR: $${d.total}`);
+                    location.reload();
+                }
+            });
+        }
+
+        function registrarGasto(e) {
+            e.preventDefault();
+            fetch('/api/gasto', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    concepto: document.getElementById('gasto_concepto').value,
+                    monto: document.getElementById('gasto_monto').value
+                })
+            }).then(r => r.json()).then(d => {
+                if(d.error) alert(d.error); else { alert(d.mensaje); location.reload(); }
+            });
+        }
+
+        function guardarTarifasCompleta(tipo) {
+            const hora = document.getElementById('hora_' + tipo).value;
+            const dia = document.getElementById('dia_' + tipo).value;
+            const mes = document.getElementById('mes_' + tipo).value;
+
+            fetch('/api/config/tarifa', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ tipo: tipo, tarifa_hora: hora, tarifa_dia: dia, tarifa_mes: mes })
+            }).then(r => r.json()).then(d => { alert(d.mensaje); location.reload(); });
+        }
+
+        function guardarProducto(id) {
+            const payload = {
+                id: id,
+                precio_venta: document.getElementById('precio_' + id).value,
+                costo_compra: document.getElementById('costo_' + id).value,
+                stock: document.getElementById('stock_' + id).value
+            };
+            fetch('/api/config/producto', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            }).then(r => r.json()).then(d => { alert(d.mensaje); location.reload(); });
+        }
+    </script>
+</body>
+</html>
