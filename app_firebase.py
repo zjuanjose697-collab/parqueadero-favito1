@@ -24,10 +24,16 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(BASE_DIR, 'p
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # --- FIREBASE / FIRESTORE ---
-FIREBASE_CREDENTIALS = os.path.join(
-    BASE_DIR,
-    'parqueadero-favito-firebase-adminsdk-fbsvc-6832080f6a.json'
+FIREBASE_CREDENTIALS = os.environ.get(
+    "FIREBASE_CREDENTIALS",
+    os.path.join(
+        BASE_DIR,
+        "parqueadero-favito-firebase-adminsdk-fbsvc-6832080f6a.json"
+    )
 )
+
+if not os.path.exists(FIREBASE_CREDENTIALS):
+    FIREBASE_CREDENTIALS = "/etc/secrets/parqueadero-favito-firebase-adminsdk-fbsvc-6832080f6a.json"
 
 if not firebase_admin._apps:
     firebase_json = os.environ.get("FIREBASE_CREDENTIALS_JSON")
