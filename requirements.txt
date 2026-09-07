@@ -2,4 +2,4 @@ flask
 flask-sqlalchemy
 reportlab
 gunicorn
-
+firebase-admin
