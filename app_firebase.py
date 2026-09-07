@@ -30,14 +30,12 @@ FIREBASE_CREDENTIALS = os.path.join(
 )
 
 if not firebase_admin._apps:
-    firebase_credentials_json = os.environ.get("FIREBASE_CREDENTIALS_JSON")
+    firebase_json = os.environ.get("FIREBASE_CREDENTIALS_JSON")
 
-    if firebase_credentials_json:
-        # ☁️ NUBE: credenciales mediante variable de entorno
+    if firebase_json:
         import json
-        cred = credentials.Certificate(json.loads(firebase_credentials_json))
+        cred = credentials.Certificate(json.loads(firebase_json))
     else:
-        # 💻 LOCAL: usa el archivo JSON que ya tenemos
         cred = credentials.Certificate(FIREBASE_CREDENTIALS)
 
     firebase_admin.initialize_app(cred)
