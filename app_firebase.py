@@ -1267,7 +1267,48 @@ def ingresar():
     })
 
     flash(f"Vehículo {placa} ingresado en E-{casilla}.", "success")
-    return redirect(url_for('index'))
+    return redirect(url_for('comprobante_ingreso', id=nuevo.id))
+
+@app.route('/comprobante_ingreso/<int:id>')
+def comprobante_ingreso(id):
+    vehiculo = db.session.get(Vehiculo, id)
+    if not vehiculo:
+        flash("No se encontró el registro del vehículo.", "error")
+        return redirect(url_for('index'))
+
+    pdf = BytesIO()
+    c = canvas.Canvas(pdf, pagesize=letter)
+    _, alto = letter
+    y = alto - 60
+
+    c.setFont("Helvetica-Bold", 20)
+    c.drawString(50, y, "FAVITO POS")
+    y -= 32
+    c.setFont("Helvetica-Bold", 15)
+    c.drawString(50, y, "COMPROBANTE DE REGISTRO")
+    y -= 35
+
+    c.setFont("Helvetica", 11)
+    c.drawString(50, y, "Nombre: " + (vehiculo.nombre_cliente or ""))
+    y -= 24
+    c.drawString(50, y, "Número: " + (vehiculo.telefono_cliente or ""))
+    y -= 24
+    c.drawString(50, y, "Placa: " + (vehiculo.placa or ""))
+    y -= 24
+    c.drawString(50, y, "Fecha y hora: " + vehiculo.fecha_ingreso.strftime("%d/%m/%Y %H:%M"))
+    y -= 35
+    c.setFont("Helvetica", 9)
+    c.drawString(50, y, "Documento generado automáticamente por Favito POS.")
+
+    c.save()
+    pdf.seek(0)
+
+    return send_file(
+        pdf,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"registro_{vehiculo.placa}_{vehiculo.id}.pdf"
+    )
 
 @app.route('/salida/<int:id>', methods=['POST'])
 def salida(id):
