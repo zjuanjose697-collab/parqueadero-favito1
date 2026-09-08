@@ -384,10 +384,13 @@ HTML_TEMPLATE = """
                                     <thead>
                                         <tr>
                                             <th>Placa</th>
+                                            <th>Nombre</th>
+                                            <th>Teléfono</th>
                                             <th>Tipo</th>
                                             <th>Casilla</th>
                                             <th>Ingreso</th>
                                             <th>Lavado</th>
+                                            <th>Factura</th>
                                             <th>Cobro y Salida</th>
                                         </tr>
                                     </thead>
@@ -395,10 +398,17 @@ HTML_TEMPLATE = """
                                         {% for v in activos %}
                                             <tr>
                                                 <td class="fw-bold font-monospace fs-5 text-info">{{ v.placa }}</td>
+                                                <td class="fw-semibold">{{ v.nombre_cliente or '—' }}</td>
+                                                <td>{{ v.telefono_cliente or '—' }}</td>
                                                 <td>{{ v.tipo }}</td>
                                                 <td><span class="badge bg-secondary">Casilla E-{{ v.casilla }}</span></td>
                                                 <td>{{ v.fecha_ingreso.strftime('%H:%M - %d/%m') }}</td>
                                                 <td>{{ "Sí ($" ~ "{:,}".format(v.costo_lavado).replace(',', '.') ~ ")" if v.lavado else "No" }}</td>
+                                                <td>
+                                                    <a href="{{ url_for('comprobante_ingreso', id=v.id) }}" class="btn btn-outline-primary btn-sm fw-bold">
+                                                        <i class="bi bi-receipt me-1"></i> Factura
+                                                    </a>
+                                                </td>
                                                 <td>
                                                     <form action="/salida/{{ v.id }}" method="POST" class="d-flex gap-2 align-items-center">
                                                         <select name="tipo_cobro" class="form-select form-select-sm" style="width: 110px;">
@@ -1267,7 +1277,7 @@ def ingresar():
     })
 
     flash(f"Vehículo {placa} ingresado en E-{casilla}.", "success")
-    return redirect(url_for('comprobante_ingreso', id=nuevo.id))
+    return redirect(url_for('index'))
 
 @app.route('/comprobante_ingreso/<int:id>')
 def comprobante_ingreso(id):
@@ -1276,39 +1286,43 @@ def comprobante_ingreso(id):
         flash("No se encontró el registro del vehículo.", "error")
         return redirect(url_for('index'))
 
-    pdf = BytesIO()
-    c = canvas.Canvas(pdf, pagesize=letter)
-    _, alto = letter
-    y = alto - 60
+    # Factura/comprobante visible directamente en la interfaz.
+    # No genera ni descarga PDF.
+    return render_template_string("""
+    <!doctype html>
+    <html lang="es">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Comprobante - Favito POS</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+        <style>
+            body { background:#111827; color:#f8fafc; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+            .factura { width:100%; max-width:430px; background:#fff; color:#111827; border-radius:18px; padding:28px; box-shadow:0 15px 45px rgba(0,0,0,.35); }
+            .linea { border-bottom:1px dashed #9ca3af; padding:10px 0; }
+            .etiqueta { color:#6b7280; font-size:.85rem; }
+            .valor { font-weight:700; font-size:1.05rem; }
+        </style>
+    </head>
+    <body>
+        <div class="factura">
+            <div class="text-center mb-3">
+                <h2 class="fw-bold mb-1">FAVITO POS</h2>
+                <div class="text-secondary">COMPROBANTE DE REGISTRO</div>
+            </div>
 
-    c.setFont("Helvetica-Bold", 20)
-    c.drawString(50, y, "FAVITO POS")
-    y -= 32
-    c.setFont("Helvetica-Bold", 15)
-    c.drawString(50, y, "COMPROBANTE DE REGISTRO")
-    y -= 35
+            <div class="linea"><div class="etiqueta">Nombre del cliente</div><div class="valor">{{ vehiculo.nombre_cliente or '' }}</div></div>
+            <div class="linea"><div class="etiqueta">Número de teléfono</div><div class="valor">{{ vehiculo.telefono_cliente or '' }}</div></div>
+            <div class="linea"><div class="etiqueta">Placa</div><div class="valor">{{ vehiculo.placa or '' }}</div></div>
+            <div class="linea"><div class="etiqueta">Fecha y hora de ingreso</div><div class="valor">{{ vehiculo.fecha_ingreso.strftime('%d/%m/%Y %H:%M') }}</div></div>
 
-    c.setFont("Helvetica", 11)
-    c.drawString(50, y, "Nombre: " + (vehiculo.nombre_cliente or ""))
-    y -= 24
-    c.drawString(50, y, "Número: " + (vehiculo.telefono_cliente or ""))
-    y -= 24
-    c.drawString(50, y, "Placa: " + (vehiculo.placa or ""))
-    y -= 24
-    c.drawString(50, y, "Fecha y hora: " + vehiculo.fecha_ingreso.strftime("%d/%m/%Y %H:%M"))
-    y -= 35
-    c.setFont("Helvetica", 9)
-    c.drawString(50, y, "Documento generado automáticamente por Favito POS.")
-
-    c.save()
-    pdf.seek(0)
-
-    return send_file(
-        pdf,
-        mimetype="application/pdf",
-        as_attachment=True,
-        download_name=f"registro_{vehiculo.placa}_{vehiculo.id}.pdf"
-    )
+            <div class="d-grid gap-2 mt-4">
+                <a href="{{ url_for('index') }}" class="btn btn-primary fw-bold">Volver al parqueadero</a>
+            </div>
+        </div>
+    </body>
+    </html>
+    """, vehiculo=vehiculo)
 
 @app.route('/salida/<int:id>', methods=['POST'])
 def salida(id):
@@ -1510,5 +1524,3 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=False)
-
-# NOTA: La plantilla de Vehículos Adentro debe mostrar nombre y teléfono en la misma fila.
