@@ -136,6 +136,8 @@ class ClienteCuenta(db.Model):
     placa = db.Column(db.String(10), nullable=True)
     tipo_vehiculo = db.Column(db.String(50), nullable=True)
     observaciones = db.Column(db.String(300), nullable=True)
+    tarifa_mensual = db.Column(db.Integer, default=0)
+    dia_cobro = db.Column(db.Integer, default=1)
     activo = db.Column(db.Boolean, default=True)
     fecha_creacion = db.Column(db.DateTime, default=hora_colombia)
 
@@ -835,6 +837,16 @@ HTML_TEMPLATE = """
                                 <label class="form-label">Observaciones</label>
                                 <textarea name="observaciones" class="form-control" rows="3" maxlength="300" placeholder="Ej: Cliente mensual, empresa, etc."></textarea>
                             </div>
+                            <div class="row g-2 mb-3">
+                                <div class="col-7">
+                                    <label class="form-label">Cuota mensual ($)</label>
+                                    <input type="text" name="tarifa_mensual" class="form-control" placeholder="Ej: 90.000">
+                                </div>
+                                <div class="col-5">
+                                    <label class="form-label">Día de cobro</label>
+                                    <input type="number" name="dia_cobro" class="form-control" min="1" max="31" value="1">
+                                </div>
+                            </div>
                             <button type="submit" class="btn btn-info w-100 fw-bold">
                                 <i class="bi bi-save me-1"></i> Crear Cuenta
                             </button>
@@ -870,9 +882,51 @@ HTML_TEMPLATE = """
                 </div>
 
                 <div class="col-lg-8">
+                    <div class="panel-card border border-warning">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div>
+                                <h5 class="fw-bold m-0 text-warning"><i class="bi bi-clipboard-check me-2"></i> LISTA DE COBRO — CLIENTES FIJOS</h5>
+                                <small class="text-muted">Aquí ves quién debe pagar este mes, cuánto cobrar y si ya se registró el cobro.</small>
+                            </div>
+                            <span class="badge bg-warning text-dark">{{ mes_actual }}</span>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-custom align-middle">
+                                <thead><tr><th>Cliente</th><th>Placa</th><th>Cuota</th><th>Último abono</th><th>Saldo</th><th>Estado</th><th>Cobro</th></tr></thead>
+                                <tbody>
+                                {% for c in clientes_cuenta %}
+                                    {% set info = lista_cobro.get(c.id) %}
+                                    <tr>
+                                        <td><strong>{{ c.nombre }}</strong><br><small class="text-muted">Día {{ c.dia_cobro or 1 }}</small></td>
+                                        <td class="font-monospace text-info fw-bold">{{ c.placa or '—' }}</td>
+                                        <td class="fw-bold">${{ "{:,}".format(c.tarifa_mensual or 0).replace(',', '.') }}</td>
+                                        <td>{{ info.ultimo_abono.strftime('%d/%m/%Y') if info and info.ultimo_abono else 'Nunca' }}</td>
+                                        <td class="fw-bold text-danger">${{ "{:,}".format(info.saldo if info else 0).replace(',', '.') }}</td>
+                                        <td>
+                                            {% if info and info.cobro_mes %}<span class="badge bg-success">Cobro generado</span>
+                                            {% elif (c.tarifa_mensual or 0) > 0 %}<span class="badge bg-warning text-dark">Por cobrar</span>
+                                            {% else %}<span class="badge bg-secondary">Sin cuota</span>{% endif %}
+                                        </td>
+                                        <td>
+                                            {% if (c.tarifa_mensual or 0) > 0 and not (info and info.cobro_mes) %}
+                                            <form action="/cuentas/cobro_mensual" method="POST">
+                                                <input type="hidden" name="cliente_id" value="{{ c.id }}">
+                                                <button class="btn btn-warning btn-sm fw-bold text-dark"><i class="bi bi-cash-coin me-1"></i> Generar cobro</button>
+                                            </form>
+                                            {% else %}<span class="text-muted small">Revisar cuenta</span>{% endif %}
+                                        </td>
+                                    </tr>
+                                {% else %}
+                                    <tr><td colspan="7" class="text-center text-muted py-4">No hay clientes fijos registrados.</td></tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
                     <div class="panel-card">
                         <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h5 class="fw-bold m-0"><i class="bi bi-people text-info me-2"></i> Clientes Fijos</h5>
+                            <h5 class="fw-bold m-0"><i class="bi bi-people text-info me-2"></i> Clientes Fijos y Estado de Cuenta</h5>
                             <input type="text" id="buscarCuenta" class="form-control" style="max-width:280px" placeholder="🔍 Buscar nombre o placa...">
                         </div>
                         <div class="table-responsive">
@@ -928,6 +982,14 @@ HTML_TEMPLATE = """
                                                         <div class="col-md-4"><div class="p-3 rounded border border-danger"><small class="text-muted d-block">SALDO</small><strong class="fs-4 text-danger">${{ "{:,}".format(saldos_cuenta.get(c.id, 0)).replace(',', '.') }}</strong></div></div>
                                                         <div class="col-md-4"><div class="p-3 rounded border border-secondary"><small class="text-muted d-block">CLIENTE</small><strong>{{ c.nombre }}</strong></div></div>
                                                         <div class="col-md-4"><div class="p-3 rounded border border-secondary"><small class="text-muted d-block">PLACA</small><strong>{{ c.placa or '—' }}</strong></div></div>
+                                                    </div>
+
+                                                    <div class="d-flex justify-content-end mb-3">
+                                                        <form action="/cuentas/cliente/{{ c.id }}/eliminar" method="POST" onsubmit="return confirm('¿Eliminar definitivamente esta cuenta y TODOS sus cargos y abonos? Esta acción no se puede deshacer.');">
+                                                            <button type="submit" class="btn btn-outline-danger btn-sm fw-bold">
+                                                                <i class="bi bi-trash me-1"></i> Eliminar cuenta
+                                                            </button>
+                                                        </form>
                                                     </div>
 
                                                     <div class="panel-card mb-3">
@@ -1145,6 +1207,26 @@ def index():
     # pero el cliente se considera al día.
     for cid in saldos_cuenta:
         saldos_cuenta[cid] = max(0, saldos_cuenta[cid])
+    ahora = hora_colombia()
+    inicio_mes = ahora.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if ahora.month == 12:
+        siguiente_mes = ahora.replace(year=ahora.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        siguiente_mes = ahora.replace(month=ahora.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    lista_cobro = {}
+    for c in clientes_cuenta:
+        movs = movimientos_cuenta.get(c.id, [])
+        cobro_mes = next((m for m in movs if m.tipo == 'cargo' and m.fecha >= inicio_mes and m.fecha < siguiente_mes and m.concepto.startswith('Cuota mensual')), None)
+        ultimo_abono = next((m.fecha for m in movs if m.tipo == 'abono'), None)
+        lista_cobro[c.id] = type('InfoCobro', (), {
+            'cobro_mes': cobro_mes,
+            'ultimo_abono': ultimo_abono,
+            'saldo': saldos_cuenta.get(c.id, 0)
+        })()
+
+    meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+    mes_actual = f"{meses[ahora.month - 1]} {ahora.year}"
     cuentas_pendientes = sum(1 for saldo in saldos_cuenta.values() if saldo > 0)
     total_por_cobrar = sum(saldos_cuenta.values())
 
@@ -1198,6 +1280,8 @@ def index():
         saldos_cuenta=saldos_cuenta,
         cuentas_pendientes=cuentas_pendientes,
         total_por_cobrar=total_por_cobrar,
+        lista_cobro=lista_cobro,
+        mes_actual=mes_actual,
     )
 
 @app.route('/caja/abrir', methods=['POST'])
@@ -1793,6 +1877,12 @@ def cuenta_cliente_nuevo():
     placa = (request.form.get('placa') or '').strip().upper()
     tipo_vehiculo = (request.form.get('tipo_vehiculo') or '').strip()
     observaciones = (request.form.get('observaciones') or '').strip()
+    tarifa_mensual = limpiar_monto(request.form.get('tarifa_mensual'))
+    try:
+        dia_cobro = int(request.form.get('dia_cobro') or 1)
+    except (TypeError, ValueError):
+        dia_cobro = 1
+    dia_cobro = min(31, max(1, dia_cobro))
 
     if not nombre:
         flash("Debes ingresar el nombre del cliente.", "error")
@@ -1804,6 +1894,8 @@ def cuenta_cliente_nuevo():
         placa=placa or None,
         tipo_vehiculo=tipo_vehiculo or None,
         observaciones=observaciones or None,
+        tarifa_mensual=max(0, tarifa_mensual),
+        dia_cobro=dia_cobro,
         activo=True
     )
     db.session.add(cliente)
@@ -1816,6 +1908,8 @@ def cuenta_cliente_nuevo():
         'placa': cliente.placa,
         'tipo_vehiculo': cliente.tipo_vehiculo,
         'observaciones': cliente.observaciones,
+        'tarifa_mensual': cliente.tarifa_mensual,
+        'dia_cobro': cliente.dia_cobro,
         'activo': cliente.activo,
         'fecha_creacion': cliente.fecha_creacion.isoformat()
     })
@@ -1823,6 +1917,49 @@ def cuenta_cliente_nuevo():
     flash(f"Cuenta creada para {nombre}.", "success")
     return redirect(url_for('index') + '#tab-cuentas')
 
+
+@app.route('/cuentas/cobro_mensual', methods=['POST'])
+def cuenta_cobro_mensual():
+    cliente_id = request.form.get('cliente_id')
+    try:
+        cliente_id = int(cliente_id)
+    except (TypeError, ValueError):
+        cliente_id = 0
+    cliente = db.session.get(ClienteCuenta, cliente_id)
+    if not cliente or not cliente.activo:
+        flash("El cliente seleccionado no existe.", "error")
+        return redirect(url_for('index') + '#tab-cuentas')
+    monto = cliente.tarifa_mensual or 0
+    if monto <= 0:
+        flash("Este cliente no tiene una cuota mensual configurada.", "error")
+        return redirect(url_for('index') + '#tab-cuentas')
+    ahora = hora_colombia()
+    inicio_mes = ahora.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if ahora.month == 12:
+        siguiente_mes = ahora.replace(year=ahora.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        siguiente_mes = ahora.replace(month=ahora.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    existente = MovimientoCuenta.query.filter(
+        MovimientoCuenta.cliente_id == cliente.id,
+        MovimientoCuenta.tipo == 'cargo',
+        MovimientoCuenta.fecha >= inicio_mes,
+        MovimientoCuenta.fecha < siguiente_mes,
+        MovimientoCuenta.concepto.like('Cuota mensual%')
+    ).first()
+    if existente:
+        flash(f"El cobro mensual de {cliente.nombre} ya fue generado este mes.", "error")
+        return redirect(url_for('index') + '#tab-cuentas')
+    concepto = f"Cuota mensual - {inicio_mes.strftime('%m/%Y')}"
+    movimiento = MovimientoCuenta(cliente_id=cliente.id, tipo='cargo', concepto=concepto, monto=monto, metodo_pago=None, fecha=ahora)
+    db.session.add(movimiento)
+    db.session.commit()
+    firestore_guardar('movimientos_cuenta', movimiento.id, {
+        'id': movimiento.id, 'cliente_id': movimiento.cliente_id, 'tipo': movimiento.tipo,
+        'concepto': movimiento.concepto, 'monto': movimiento.monto, 'metodo_pago': None,
+        'fecha': movimiento.fecha.isoformat()
+    })
+    flash(f"Cobro mensual generado para {cliente.nombre}: ${monto:,}.".replace(',', '.'), "success")
+    return redirect(url_for('index') + '#tab-cuentas')
 
 @app.route('/cuentas/cargo', methods=['POST'])
 def cuenta_cargo():
@@ -1923,6 +2060,29 @@ def cuenta_abono():
     return redirect(url_for('index') + '#tab-cuentas')
 
 
+@app.route('/cuentas/cliente/<int:id>/eliminar', methods=['POST'])
+def cuenta_cliente_eliminar(id):
+    cliente = db.session.get(ClienteCuenta, id)
+    if not cliente:
+        flash("Cliente no encontrado.", "error")
+        return redirect(url_for('index') + '#tab-cuentas')
+
+    nombre = cliente.nombre
+    movimientos = MovimientoCuenta.query.filter_by(cliente_id=cliente.id).all()
+
+    # Eliminar primero los movimientos para no dejar registros huérfanos.
+    for movimiento in movimientos:
+        firestore_eliminar('movimientos_cuenta', movimiento.id)
+        db.session.delete(movimiento)
+
+    firestore_eliminar('clientes_cuenta', cliente.id)
+    db.session.delete(cliente)
+    db.session.commit()
+
+    flash(f"Cuenta de {nombre} y sus cargos/abonos fueron eliminados correctamente.", "success")
+    return redirect(url_for('index') + '#tab-cuentas')
+
+
 @app.route('/cuentas/cliente/<int:id>/desactivar', methods=['POST'])
 def cuenta_cliente_desactivar(id):
     cliente = db.session.get(ClienteCuenta, id)
@@ -1972,6 +2132,11 @@ with app.app_context():
         db.session.execute(text('ALTER TABLE vehiculo ADD COLUMN nombre_cliente VARCHAR(100)'))
     if 'telefono_cliente' not in columnas_vehiculo:
         db.session.execute(text('ALTER TABLE vehiculo ADD COLUMN telefono_cliente VARCHAR(30)'))
+    columnas_cliente = {col['name'] for col in inspector.get_columns('cliente_cuenta')}
+    if 'tarifa_mensual' not in columnas_cliente:
+        db.session.execute(text('ALTER TABLE cliente_cuenta ADD COLUMN tarifa_mensual INTEGER DEFAULT 0'))
+    if 'dia_cobro' not in columnas_cliente:
+        db.session.execute(text('ALTER TABLE cliente_cuenta ADD COLUMN dia_cobro INTEGER DEFAULT 1'))
     db.session.commit()
 
 if __name__ == '__main__':
