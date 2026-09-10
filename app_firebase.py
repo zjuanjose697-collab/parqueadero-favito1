@@ -129,6 +129,25 @@ class Tarifa(db.Model):
     tarifa_lavado = db.Column(db.Integer, nullable=False)
     tarifa_mes = db.Column(db.Integer, default=0)
 
+class ClienteCuenta(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(120), nullable=False)
+    telefono = db.Column(db.String(30), nullable=True)
+    placa = db.Column(db.String(10), nullable=True)
+    tipo_vehiculo = db.Column(db.String(50), nullable=True)
+    observaciones = db.Column(db.String(300), nullable=True)
+    activo = db.Column(db.Boolean, default=True)
+    fecha_creacion = db.Column(db.DateTime, default=hora_colombia)
+
+class MovimientoCuenta(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('cliente_cuenta.id'), nullable=False)
+    tipo = db.Column(db.String(10), nullable=False)  # cargo / abono
+    concepto = db.Column(db.String(200), nullable=False)
+    monto = db.Column(db.Integer, nullable=False)
+    metodo_pago = db.Column(db.String(20), nullable=True)
+    fecha = db.Column(db.DateTime, default=hora_colombia)
+
 # --- PLANTILLA HTML ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -252,6 +271,7 @@ HTML_TEMPLATE = """
         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-gastos"><i class="bi bi-wallet2 me-1"></i> Control Gastos</button></li>
         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-auditoria"><i class="bi bi-pie-chart me-1"></i> Auditoría Contable</button></li>
         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-ajustes"><i class="bi bi-sliders me-1"></i> Ajuste de Precios / Mes</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-cuentas"><i class="bi bi-journal-bookmark-fill me-1"></i> Cuentas Clientes</button></li>
     </ul>
 
     <div class="tab-content">
@@ -763,6 +783,215 @@ HTML_TEMPLATE = """
             </div>
         </div>
 
+        <div class="tab-pane fade" id="tab-cuentas">
+            <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <div class="stat-card">
+                        <div><p>CLIENTES FIJOS</p><h2>{{ clientes_cuenta|length }}</h2></div>
+                        <div class="stat-icon text-info"><i class="bi bi-people-fill"></i></div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="stat-card">
+                        <div><p>CUENTAS PENDIENTES</p><h2 style="color: var(--red);">{{ cuentas_pendientes }}</h2></div>
+                        <div class="stat-icon text-danger"><i class="bi bi-exclamation-circle-fill"></i></div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="stat-card">
+                        <div><p>TOTAL POR COBRAR</p><h2 style="color: var(--red);">${{ "{:,}".format(total_por_cobrar).replace(',', '.') }}</h2></div>
+                        <div class="stat-icon text-warning"><i class="bi bi-cash-stack"></i></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-lg-4">
+                    <div class="panel-card">
+                        <h5 class="fw-bold mb-3 text-info"><i class="bi bi-person-plus-fill me-2"></i> Nuevo Cliente Fijo</h5>
+                        <form action="/cuentas/cliente/nuevo" method="POST">
+                            <div class="mb-3">
+                                <label class="form-label">Nombre del Cliente</label>
+                                <input type="text" name="nombre" class="form-control" maxlength="120" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Teléfono</label>
+                                <input type="tel" name="telefono" class="form-control" maxlength="30">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Placa</label>
+                                <input type="text" name="placa" class="form-control text-uppercase" maxlength="10">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Tipo de Vehículo</label>
+                                <select name="tipo_vehiculo" class="form-select">
+                                    <option value="">No especificado</option>
+                                    {% for t in tarifas %}
+                                        <option value="{{ t.nombre }}">{{ t.nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Observaciones</label>
+                                <textarea name="observaciones" class="form-control" rows="3" maxlength="300" placeholder="Ej: Cliente mensual, empresa, etc."></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-info w-100 fw-bold">
+                                <i class="bi bi-save me-1"></i> Crear Cuenta
+                            </button>
+                        </form>
+                    </div>
+
+                    <div class="panel-card">
+                        <h5 class="fw-bold mb-3 text-warning"><i class="bi bi-plus-circle me-2"></i> Registrar Cargo</h5>
+                        <p class="text-muted small">El cargo queda como deuda y <strong>NO entra a caja</strong> hasta que el cliente haga un abono.</p>
+                        <form action="/cuentas/cargo" method="POST">
+                            <div class="mb-3">
+                                <label class="form-label">Cliente</label>
+                                <select name="cliente_id" class="form-select" required>
+                                    <option value="">Seleccionar cliente...</option>
+                                    {% for c in clientes_cuenta %}
+                                        <option value="{{ c.id }}">{{ c.nombre }}{% if c.placa %} — {{ c.placa }}{% endif %}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Concepto</label>
+                                <input type="text" name="concepto" class="form-control" maxlength="200" placeholder="Ej: Parqueadero semana" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Valor ($)</label>
+                                <input type="text" name="monto" class="form-control" placeholder="Ej: 50.000" required>
+                            </div>
+                            <button type="submit" class="btn btn-warning w-100 fw-bold text-dark">
+                                <i class="bi bi-journal-plus me-1"></i> Agregar a Cuenta
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="col-lg-8">
+                    <div class="panel-card">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="fw-bold m-0"><i class="bi bi-people text-info me-2"></i> Clientes Fijos</h5>
+                            <input type="text" id="buscarCuenta" class="form-control" style="max-width:280px" placeholder="🔍 Buscar nombre o placa...">
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-custom align-middle" id="tablaCuentas">
+                                <thead>
+                                    <tr>
+                                        <th>Cliente</th>
+                                        <th>Teléfono</th>
+                                        <th>Placa</th>
+                                        <th>Saldo</th>
+                                        <th>Estado</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for c in clientes_cuenta %}
+                                    <tr class="fila-cuenta">
+                                        <td>
+                                            <div class="fw-bold">{{ c.nombre }}</div>
+                                            {% if c.observaciones %}<small class="text-muted">{{ c.observaciones }}</small>{% endif %}
+                                        </td>
+                                        <td>{{ c.telefono or '—' }}</td>
+                                        <td class="font-monospace fw-bold text-info">{{ c.placa or '—' }}</td>
+                                        <td class="fw-bold {% if saldos_cuenta.get(c.id, 0) > 0 %}text-danger{% else %}text-success{% endif %}">
+                                            ${{ "{:,}".format(saldos_cuenta.get(c.id, 0)).replace(',', '.') }}
+                                        </td>
+                                        <td>
+                                            {% if saldos_cuenta.get(c.id, 0) > 0 %}
+                                                <span class="badge bg-danger">Pendiente</span>
+                                            {% else %}
+                                                <span class="badge bg-success">Al día</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <button type="button" class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#modalCuenta{{ c.id }}">
+                                                <i class="bi bi-eye me-1"></i> Ver
+                                            </button>
+                                        </td>
+                                    </tr>
+
+                                    <div class="modal fade" id="modalCuenta{{ c.id }}" tabindex="-1">
+                                        <div class="modal-dialog modal-lg">
+                                            <div class="modal-content bg-dark text-light border border-secondary">
+                                                <div class="modal-header border-secondary">
+                                                    <div>
+                                                        <h5 class="modal-title fw-bold">{{ c.nombre }}</h5>
+                                                        <small class="text-muted">{{ c.telefono or 'Sin teléfono' }}{% if c.placa %} · {{ c.placa }}{% endif %}</small>
+                                                    </div>
+                                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                                </div>
+                                                <div class="modal-body">
+                                                    <div class="row g-3 mb-3">
+                                                        <div class="col-md-4"><div class="p-3 rounded border border-danger"><small class="text-muted d-block">SALDO</small><strong class="fs-4 text-danger">${{ "{:,}".format(saldos_cuenta.get(c.id, 0)).replace(',', '.') }}</strong></div></div>
+                                                        <div class="col-md-4"><div class="p-3 rounded border border-secondary"><small class="text-muted d-block">CLIENTE</small><strong>{{ c.nombre }}</strong></div></div>
+                                                        <div class="col-md-4"><div class="p-3 rounded border border-secondary"><small class="text-muted d-block">PLACA</small><strong>{{ c.placa or '—' }}</strong></div></div>
+                                                    </div>
+
+                                                    <div class="panel-card mb-3">
+                                                        <h6 class="fw-bold mb-3"><i class="bi bi-cash-coin text-success me-1"></i> Registrar Abono / Pago</h6>
+                                                        <form action="/cuentas/abono" method="POST" class="row g-2">
+                                                            <input type="hidden" name="cliente_id" value="{{ c.id }}">
+                                                            <div class="col-md-4">
+                                                                <input type="text" name="monto" class="form-control" placeholder="Valor $ 30.000" required>
+                                                            </div>
+                                                            <div class="col-md-4">
+                                                                <select name="metodo_pago" class="form-select">
+                                                                    <option value="Efectivo">Efectivo</option>
+                                                                    <option value="Transferencia">Transferencia</option>
+                                                                </select>
+                                                            </div>
+                                                            <div class="col-md-4">
+                                                                <button class="btn btn-success w-100 fw-bold"><i class="bi bi-check-circle me-1"></i> Registrar Abono</button>
+                                                            </div>
+                                                        </form>
+                                                    </div>
+
+                                                    <h6 class="fw-bold mb-2">Historial de la Cuenta</h6>
+                                                    <div class="table-responsive">
+                                                        <table class="table table-custom">
+                                                            <thead><tr><th>Fecha</th><th>Tipo</th><th>Concepto</th><th>Método</th><th>Valor</th></tr></thead>
+                                                            <tbody>
+                                                                {% for m in movimientos_cuenta.get(c.id, []) %}
+                                                                <tr>
+                                                                    <td>{{ m.fecha.strftime('%d/%m/%Y %H:%M') }}</td>
+                                                                    <td>
+                                                                        {% if m.tipo == 'cargo' %}
+                                                                            <span class="badge bg-danger">Cargo</span>
+                                                                        {% else %}
+                                                                            <span class="badge bg-success">Abono</span>
+                                                                        {% endif %}
+                                                                    </td>
+                                                                    <td>{{ m.concepto }}</td>
+                                                                    <td>{{ m.metodo_pago or '—' }}</td>
+                                                                    <td class="fw-bold {% if m.tipo == 'cargo' %}text-danger{% else %}text-success{% endif %}">
+                                                                        {{ '+' if m.tipo == 'cargo' else '-' }}${{ "{:,}".format(m.monto).replace(',', '.') }}
+                                                                    </td>
+                                                                </tr>
+                                                                {% else %}
+                                                                <tr><td colspan="5" class="text-center text-muted py-4">No hay movimientos todavía.</td></tr>
+                                                                {% endfor %}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            {% if not clientes_cuenta %}
+                                <p class="text-center text-muted py-4 mb-0">Todavía no hay clientes fijos registrados.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <!-- Modal Abrir Caja -->
@@ -824,6 +1053,25 @@ HTML_TEMPLATE = """
         document.addEventListener('DOMContentLoaded', () => {
             const catSelect = document.getElementById('selectCategoria');
             if(catSelect) actualizarOpcionesVulcanizadora(catSelect);
+
+            const buscadorCuenta = document.getElementById('buscarCuenta');
+            if (buscadorCuenta) {
+                buscadorCuenta.addEventListener('input', function() {
+                    const texto = this.value.toLowerCase().trim();
+                    document.querySelectorAll('#tablaCuentas .fila-cuenta').forEach(function(fila) {
+                        fila.style.display = fila.innerText.toLowerCase().includes(texto) ? '' : 'none';
+                    });
+                });
+            }
+
+            function abrirPestanaDesdeHash() {
+                if (window.location.hash === '#tab-cuentas') {
+                    const boton = document.querySelector('[data-bs-target="#tab-cuentas"]');
+                    if (boton) bootstrap.Tab.getOrCreateInstance(boton).show();
+                }
+            }
+            abrirPestanaDesdeHash();
+            window.addEventListener('hashchange', abrirPestanaDesdeHash);
         });
     </script>
 </body>
@@ -882,11 +1130,35 @@ def index():
     lista_arriendos = Arriendo.query.filter(Arriendo.fecha >= desde).all()
     lista_gastos = Gasto.query.filter(Gasto.fecha >= desde).all()
 
+    clientes_cuenta = ClienteCuenta.query.filter_by(activo=True).order_by(ClienteCuenta.nombre).all()
+    movimientos_todos = MovimientoCuenta.query.order_by(MovimientoCuenta.fecha.desc()).all()
+    movimientos_cuenta = {c.id: [] for c in clientes_cuenta}
+    saldos_cuenta = {c.id: 0 for c in clientes_cuenta}
+    for mov in movimientos_todos:
+        if mov.cliente_id in movimientos_cuenta:
+            movimientos_cuenta[mov.cliente_id].append(mov)
+            if mov.tipo == 'cargo':
+                saldos_cuenta[mov.cliente_id] += mov.monto
+            elif mov.tipo == 'abono':
+                saldos_cuenta[mov.cliente_id] -= mov.monto
+    # Un saldo nunca se muestra negativo; los pagos de más quedan registrados,
+    # pero el cliente se considera al día.
+    for cid in saldos_cuenta:
+        saldos_cuenta[cid] = max(0, saldos_cuenta[cid])
+    cuentas_pendientes = sum(1 for saldo in saldos_cuenta.values() if saldo > 0)
+    total_por_cobrar = sum(saldos_cuenta.values())
+
+    abonos_cuenta = MovimientoCuenta.query.filter(
+        MovimientoCuenta.tipo == 'abono',
+        MovimientoCuenta.fecha >= desde
+    ).all()
+
     total_ventas = (
         sum(v.total_pagado for v in vehiculos_cobrados)
         + sum(v.monto for v in ventas_vulc)
         + sum(v.monto for v in ventas_lavado)
         + sum(a.monto for a in lista_arriendos)
+        + sum(m.monto for m in abonos_cuenta)
     )
     total_gastos = sum(g.monto for g in lista_gastos)
 
@@ -895,12 +1167,14 @@ def index():
         + sum(v.monto for v in ventas_vulc if v.metodo_pago == 'Efectivo')
         + sum(v.monto for v in ventas_lavado if v.metodo_pago == 'Efectivo')
         + sum(a.monto for a in lista_arriendos if a.metodo_pago == 'Efectivo')
+        + sum(m.monto for m in abonos_cuenta if m.metodo_pago == 'Efectivo')
     )
     total_transferencia = (
         sum(v.total_pagado for v in vehiculos_cobrados if v.metodo_pago == 'Transferencia')
         + sum(v.monto for v in ventas_vulc if v.metodo_pago == 'Transferencia')
         + sum(v.monto for v in ventas_lavado if v.metodo_pago == 'Transferencia')
         + sum(a.monto for a in lista_arriendos if a.metodo_pago == 'Transferencia')
+        + sum(m.monto for m in abonos_cuenta if m.metodo_pago == 'Transferencia')
     )
 
     return render_template_string(
@@ -919,6 +1193,11 @@ def index():
         ventas_lavado=ventas_lavado,
         lista_arriendos=lista_arriendos,
         lista_gastos=lista_gastos,
+        clientes_cuenta=clientes_cuenta,
+        movimientos_cuenta=movimientos_cuenta,
+        saldos_cuenta=saldos_cuenta,
+        cuentas_pendientes=cuentas_pendientes,
+        total_por_cobrar=total_por_cobrar,
     )
 
 @app.route('/caja/abrir', methods=['POST'])
@@ -1005,6 +1284,12 @@ def cerrar_caja():
         Arriendo.fecha <= ahora
     ).all()
 
+    abonos_cuenta_cierre = MovimientoCuenta.query.filter(
+        MovimientoCuenta.tipo == 'abono',
+        MovimientoCuenta.fecha >= desde,
+        MovimientoCuenta.fecha <= ahora
+    ).all()
+
     gastos = Gasto.query.filter(
         Gasto.fecha >= desde,
         Gasto.fecha <= ahora
@@ -1018,9 +1303,11 @@ def cerrar_caja():
     transferencia_lavados = sum(v.monto for v in lavados if v.metodo_pago == 'Transferencia')
     efectivo_arriendos = sum(a.monto for a in arriendos if a.metodo_pago == 'Efectivo')
     transferencia_arriendos = sum(a.monto for a in arriendos if a.metodo_pago == 'Transferencia')
+    efectivo_abonos_cuenta = sum(m.monto for m in abonos_cuenta_cierre if m.metodo_pago == 'Efectivo')
+    transferencia_abonos_cuenta = sum(m.monto for m in abonos_cuenta_cierre if m.metodo_pago == 'Transferencia')
 
-    efectivo = efectivo_parqueadero + efectivo_vulc + efectivo_lavados + efectivo_arriendos
-    transferencia = transferencia_parqueadero + transferencia_vulc + transferencia_lavados + transferencia_arriendos
+    efectivo = efectivo_parqueadero + efectivo_vulc + efectivo_lavados + efectivo_arriendos + efectivo_abonos_cuenta
+    transferencia = transferencia_parqueadero + transferencia_vulc + transferencia_lavados + transferencia_arriendos + transferencia_abonos_cuenta
     total_ingresos = efectivo + transferencia
     total_gastos = sum(g.monto for g in gastos)
     efectivo_esperado = caja.monto_inicial + efectivo - total_gastos
@@ -1063,6 +1350,8 @@ def cerrar_caja():
     escribir("Lavado - transferencia: " + dinero(transferencia_lavados))
     escribir("Arriendos - efectivo: " + dinero(efectivo_arriendos))
     escribir("Arriendos - transferencia: " + dinero(transferencia_arriendos))
+    escribir("Cuentas clientes - abonos efectivo: " + dinero(efectivo_abonos_cuenta))
+    escribir("Cuentas clientes - abonos transferencia: " + dinero(transferencia_abonos_cuenta))
     escribir("TOTAL INGRESOS: " + dinero(total_ingresos), 20, True)
     escribir("TOTAL GASTOS: " + dinero(total_gastos), 20, True)
     escribir("EFECTIVO ESPERADO EN CAJA: " + dinero(efectivo_esperado), 24, True, 12)
@@ -1072,6 +1361,7 @@ def cerrar_caja():
     escribir("Servicios de vulcanizadora: " + str(len(vulc)))
     escribir("Servicios de lavado: " + str(len(lavados)))
     escribir("Pagos de arriendo: " + str(len(arriendos)))
+    escribir("Abonos de cuentas: " + str(len(abonos_cuenta_cierre)))
     escribir("Gastos registrados: " + str(len(gastos)))
 
     escribir("DETALLE DE INGRESOS", 20, True, 12)
@@ -1083,6 +1373,10 @@ def cerrar_caja():
         escribir(f"Lavado | {v.placa} | {v.servicio} | {v.metodo_pago} | {dinero(v.monto)}", 15, False, 9)
     for a in arriendos:
         escribir(f"Arriendo | {a.local} | {a.inquilino} | {a.metodo_pago} | {dinero(a.monto)}", 15, False, 9)
+    for m in abonos_cuenta_cierre:
+        cliente = db.session.get(ClienteCuenta, m.cliente_id)
+        nombre_cliente = cliente.nombre if cliente else f"Cliente {m.cliente_id}"
+        escribir(f"Cuenta cliente | {nombre_cliente} | Abono | {m.metodo_pago} | {dinero(m.monto)}", 15, False, 9)
 
     escribir("DETALLE DE GASTOS", 20, True, 12)
     for g in gastos:
@@ -1491,6 +1785,166 @@ def registrar_gasto():
     })
     flash("Gasto registrado correctamente.", "success")
     return redirect(url_for('index'))
+
+@app.route('/cuentas/cliente/nuevo', methods=['POST'])
+def cuenta_cliente_nuevo():
+    nombre = (request.form.get('nombre') or '').strip()
+    telefono = (request.form.get('telefono') or '').strip()
+    placa = (request.form.get('placa') or '').strip().upper()
+    tipo_vehiculo = (request.form.get('tipo_vehiculo') or '').strip()
+    observaciones = (request.form.get('observaciones') or '').strip()
+
+    if not nombre:
+        flash("Debes ingresar el nombre del cliente.", "error")
+        return redirect(url_for('index') + '#tab-cuentas')
+
+    cliente = ClienteCuenta(
+        nombre=nombre,
+        telefono=telefono,
+        placa=placa or None,
+        tipo_vehiculo=tipo_vehiculo or None,
+        observaciones=observaciones or None,
+        activo=True
+    )
+    db.session.add(cliente)
+    db.session.commit()
+
+    firestore_guardar('clientes_cuenta', cliente.id, {
+        'id': cliente.id,
+        'nombre': cliente.nombre,
+        'telefono': cliente.telefono,
+        'placa': cliente.placa,
+        'tipo_vehiculo': cliente.tipo_vehiculo,
+        'observaciones': cliente.observaciones,
+        'activo': cliente.activo,
+        'fecha_creacion': cliente.fecha_creacion.isoformat()
+    })
+
+    flash(f"Cuenta creada para {nombre}.", "success")
+    return redirect(url_for('index') + '#tab-cuentas')
+
+
+@app.route('/cuentas/cargo', methods=['POST'])
+def cuenta_cargo():
+    cliente_id = request.form.get('cliente_id')
+    concepto = (request.form.get('concepto') or '').strip()
+    monto = limpiar_monto(request.form.get('monto'))
+
+    try:
+        cliente_id = int(cliente_id)
+    except (TypeError, ValueError):
+        cliente_id = 0
+
+    cliente = db.session.get(ClienteCuenta, cliente_id)
+    if not cliente or not cliente.activo:
+        flash("El cliente seleccionado no existe.", "error")
+        return redirect(url_for('index') + '#tab-cuentas')
+    if not concepto:
+        flash("Debes indicar el concepto del cargo.", "error")
+        return redirect(url_for('index') + '#tab-cuentas')
+    if monto <= 0:
+        flash("El valor del cargo debe ser mayor que cero.", "error")
+        return redirect(url_for('index') + '#tab-cuentas')
+
+    movimiento = MovimientoCuenta(
+        cliente_id=cliente.id,
+        tipo='cargo',
+        concepto=concepto,
+        monto=monto,
+        metodo_pago=None,
+        fecha=hora_colombia()
+    )
+    db.session.add(movimiento)
+    db.session.commit()
+
+    firestore_guardar('movimientos_cuenta', movimiento.id, {
+        'id': movimiento.id,
+        'cliente_id': movimiento.cliente_id,
+        'tipo': movimiento.tipo,
+        'concepto': movimiento.concepto,
+        'monto': movimiento.monto,
+        'metodo_pago': None,
+        'fecha': movimiento.fecha.isoformat()
+    })
+
+    flash(f"Cargo de ${monto:,} agregado a la cuenta de {cliente.nombre}.".replace(',', '.'), "success")
+    return redirect(url_for('index') + '#tab-cuentas')
+
+
+@app.route('/cuentas/abono', methods=['POST'])
+def cuenta_abono():
+    caja = Caja.query.first()
+    if not caja or caja.estado != 'abierta':
+        flash("Debes abrir la caja antes de registrar un abono.", "error")
+        return redirect(url_for('index') + '#tab-cuentas')
+
+    cliente_id = request.form.get('cliente_id')
+    monto = limpiar_monto(request.form.get('monto'))
+    metodo_pago = request.form.get('metodo_pago', 'Efectivo')
+    if metodo_pago not in ('Efectivo', 'Transferencia'):
+        metodo_pago = 'Efectivo'
+
+    try:
+        cliente_id = int(cliente_id)
+    except (TypeError, ValueError):
+        cliente_id = 0
+
+    cliente = db.session.get(ClienteCuenta, cliente_id)
+    if not cliente or not cliente.activo:
+        flash("El cliente seleccionado no existe.", "error")
+        return redirect(url_for('index') + '#tab-cuentas')
+    if monto <= 0:
+        flash("El valor del abono debe ser mayor que cero.", "error")
+        return redirect(url_for('index') + '#tab-cuentas')
+
+    # El abono sí es un ingreso real y se tendrá en cuenta en el cierre de caja.
+    movimiento = MovimientoCuenta(
+        cliente_id=cliente.id,
+        tipo='abono',
+        concepto='Abono a cuenta',
+        monto=monto,
+        metodo_pago=metodo_pago,
+        fecha=hora_colombia()
+    )
+    db.session.add(movimiento)
+    db.session.commit()
+
+    firestore_guardar('movimientos_cuenta', movimiento.id, {
+        'id': movimiento.id,
+        'cliente_id': movimiento.cliente_id,
+        'tipo': movimiento.tipo,
+        'concepto': movimiento.concepto,
+        'monto': movimiento.monto,
+        'metodo_pago': movimiento.metodo_pago,
+        'fecha': movimiento.fecha.isoformat()
+    })
+
+    flash(f"Abono de ${monto:,} registrado para {cliente.nombre}.".replace(',', '.'), "success")
+    return redirect(url_for('index') + '#tab-cuentas')
+
+
+@app.route('/cuentas/cliente/<int:id>/desactivar', methods=['POST'])
+def cuenta_cliente_desactivar(id):
+    cliente = db.session.get(ClienteCuenta, id)
+    if not cliente:
+        flash("Cliente no encontrado.", "error")
+        return redirect(url_for('index') + '#tab-cuentas')
+
+    cliente.activo = False
+    db.session.commit()
+    firestore_guardar('clientes_cuenta', cliente.id, {
+        'id': cliente.id,
+        'nombre': cliente.nombre,
+        'telefono': cliente.telefono,
+        'placa': cliente.placa,
+        'tipo_vehiculo': cliente.tipo_vehiculo,
+        'observaciones': cliente.observaciones,
+        'activo': cliente.activo,
+        'fecha_creacion': cliente.fecha_creacion.isoformat() if cliente.fecha_creacion else None
+    })
+    flash(f"Cuenta de {cliente.nombre} archivada. El historial se conserva.", "success")
+    return redirect(url_for('index') + '#tab-cuentas')
+
 
 @app.route('/tarifas/actualizar/<int:id>', methods=['POST'])
 def actualizar_tarifa(id):
