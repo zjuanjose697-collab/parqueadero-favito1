@@ -903,8 +903,10 @@ HTML_TEMPLATE = """
                                         <td>{{ info.ultimo_abono.strftime('%d/%m/%Y') if info and info.ultimo_abono else 'Nunca' }}</td>
                                         <td class="fw-bold text-danger">${{ "{:,}".format(info.saldo if info else 0).replace(',', '.') }}</td>
                                         <td>
-                                            {% if info and info.cobro_mes %}<span class="badge bg-success">Cobro generado</span>
-                                            {% elif (c.tarifa_mensual or 0) > 0 %}<span class="badge bg-warning text-dark">Por cobrar</span>
+                                            {% set dia_programado = [c.dia_cobro or 1, 28 if false else 31]|min %}
+                                            {% if info and info.cobro_mes %}<span class="badge bg-danger">Por cobrar</span>
+                                            {% elif (c.tarifa_mensual or 0) > 0 and ahora.day >= (c.dia_cobro or 1) %}<span class="badge bg-danger">Por cobrar</span>
+                                            {% elif (c.tarifa_mensual or 0) > 0 %}<span class="badge bg-warning text-dark">Próximo cobro</span>
                                             {% else %}<span class="badge bg-secondary">Sin cuota</span>{% endif %}
                                         </td>
                                         <td>
@@ -984,12 +986,57 @@ HTML_TEMPLATE = """
                                                         <div class="col-md-4"><div class="p-3 rounded border border-secondary"><small class="text-muted d-block">PLACA</small><strong>{{ c.placa or '—' }}</strong></div></div>
                                                     </div>
 
-                                                    <div class="d-flex justify-content-end mb-3">
+                                                    <div class="d-flex justify-content-end gap-2 mb-3">
+                                                        <button type="button" class="btn btn-outline-info btn-sm fw-bold" data-bs-toggle="collapse" data-bs-target="#editarCuenta{{ c.id }}">
+                                                            <i class="bi bi-pencil-square me-1"></i> Editar datos
+                                                        </button>
                                                         <form action="/cuentas/cliente/{{ c.id }}/eliminar" method="POST" onsubmit="return confirm('¿Eliminar definitivamente esta cuenta y TODOS sus cargos y abonos? Esta acción no se puede deshacer.');">
                                                             <button type="submit" class="btn btn-outline-danger btn-sm fw-bold">
                                                                 <i class="bi bi-trash me-1"></i> Eliminar cuenta
                                                             </button>
                                                         </form>
+                                                    </div>
+
+                                                    <div class="collapse mb-3" id="editarCuenta{{ c.id }}">
+                                                        <div class="panel-card border border-info">
+                                                            <h6 class="fw-bold text-info mb-3"><i class="bi bi-pencil-square me-1"></i> Editar cliente</h6>
+                                                            <form action="/cuentas/cliente/{{ c.id }}/editar" method="POST">
+                                                                <div class="row g-2">
+                                                                    <div class="col-md-6">
+                                                                        <label class="form-label">Nombre</label>
+                                                                        <input type="text" name="nombre" class="form-control" maxlength="120" value="{{ c.nombre }}" required>
+                                                                    </div>
+                                                                    <div class="col-md-6">
+                                                                        <label class="form-label">Teléfono</label>
+                                                                        <input type="tel" name="telefono" class="form-control" maxlength="30" value="{{ c.telefono or '' }}">
+                                                                    </div>
+                                                                    <div class="col-md-4">
+                                                                        <label class="form-label">Placa</label>
+                                                                        <input type="text" name="placa" class="form-control text-uppercase" maxlength="10" value="{{ c.placa or '' }}">
+                                                                    </div>
+                                                                    <div class="col-md-4">
+                                                                        <label class="form-label">Tipo de vehículo</label>
+                                                                        <select name="tipo_vehiculo" class="form-select">
+                                                                            <option value="">No especificado</option>
+                                                                            {% for t in tarifas %}<option value="{{ t.nombre }}" {% if c.tipo_vehiculo == t.nombre %}selected{% endif %}>{{ t.nombre }}</option>{% endfor %}
+                                                                        </select>
+                                                                    </div>
+                                                                    <div class="col-md-4">
+                                                                        <label class="form-label">Cuota mensual ($)</label>
+                                                                        <input type="text" name="tarifa_mensual" class="form-control" value="{{ c.tarifa_mensual or 0 }}">
+                                                                    </div>
+                                                                    <div class="col-md-4">
+                                                                        <label class="form-label">Día de cobro</label>
+                                                                        <input type="number" name="dia_cobro" class="form-control" min="1" max="31" value="{{ c.dia_cobro or 1 }}">
+                                                                    </div>
+                                                                    <div class="col-md-8">
+                                                                        <label class="form-label">Observaciones</label>
+                                                                        <input type="text" name="observaciones" class="form-control" maxlength="300" value="{{ c.observaciones or '' }}">
+                                                                    </div>
+                                                                </div>
+                                                                <button type="submit" class="btn btn-info fw-bold mt-3"><i class="bi bi-check-circle me-1"></i> Guardar cambios</button>
+                                                            </form>
+                                                        </div>
                                                     </div>
 
                                                     <div class="panel-card mb-3">
@@ -1214,6 +1261,32 @@ def index():
     else:
         siguiente_mes = ahora.replace(month=ahora.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
 
+    # Generación automática de la cuota mensual: al llegar el día de cobro,
+    # si todavía no existe la cuota de este mes, se crea como deuda.
+    import calendar
+    dia_actual = ahora.day
+    ultimo_dia_mes = calendar.monthrange(ahora.year, ahora.month)[1]
+    for c in clientes_cuenta:
+        dia_programado = min(max(1, c.dia_cobro or 1), ultimo_dia_mes)
+        movs = movimientos_cuenta.get(c.id, [])
+        cobro_mes = next((m for m in movs if m.tipo == 'cargo' and m.fecha >= inicio_mes and m.fecha < siguiente_mes and m.concepto.startswith('Cuota mensual')), None)
+        if dia_actual >= dia_programado and (c.tarifa_mensual or 0) > 0 and not cobro_mes:
+            movimiento = MovimientoCuenta(
+                cliente_id=c.id, tipo='cargo',
+                concepto=f"Cuota mensual - {inicio_mes.strftime('%m/%Y')}",
+                monto=c.tarifa_mensual, metodo_pago=None, fecha=ahora
+            )
+            db.session.add(movimiento)
+            db.session.flush()
+            firestore_guardar('movimientos_cuenta', movimiento.id, {
+                'id': movimiento.id, 'cliente_id': movimiento.cliente_id, 'tipo': movimiento.tipo,
+                'concepto': movimiento.concepto, 'monto': movimiento.monto, 'metodo_pago': None,
+                'fecha': movimiento.fecha.isoformat()
+            })
+            movs.insert(0, movimiento)
+            movimientos_cuenta[c.id] = movs
+    db.session.commit()
+
     lista_cobro = {}
     for c in clientes_cuenta:
         movs = movimientos_cuenta.get(c.id, [])
@@ -1263,6 +1336,7 @@ def index():
         HTML_TEMPLATE,
         caja=caja,
         tarifas=tarifas,
+        ahora=ahora,
         activos=activos,
         casillas=casillas,
         entrados_hoy=entrados_hoy,
@@ -1915,6 +1989,49 @@ def cuenta_cliente_nuevo():
     })
 
     flash(f"Cuenta creada para {nombre}.", "success")
+    return redirect(url_for('index') + '#tab-cuentas')
+
+
+@app.route('/cuentas/cliente/<int:id>/editar', methods=['POST'])
+def cuenta_cliente_editar(id):
+    cliente = db.session.get(ClienteCuenta, id)
+    if not cliente:
+        flash("Cliente no encontrado.", "error")
+        return redirect(url_for('index') + '#tab-cuentas')
+
+    nombre = (request.form.get('nombre') or '').strip()
+    telefono = (request.form.get('telefono') or '').strip()
+    placa = (request.form.get('placa') or '').strip().upper()
+    tipo_vehiculo = (request.form.get('tipo_vehiculo') or '').strip()
+    observaciones = (request.form.get('observaciones') or '').strip()
+    tarifa_mensual = limpiar_monto(request.form.get('tarifa_mensual'))
+    try:
+        dia_cobro = int(request.form.get('dia_cobro') or 1)
+    except (TypeError, ValueError):
+        dia_cobro = 1
+    dia_cobro = min(31, max(1, dia_cobro))
+
+    if not nombre:
+        flash("El nombre del cliente es obligatorio.", "error")
+        return redirect(url_for('index') + '#tab-cuentas')
+
+    cliente.nombre = nombre
+    cliente.telefono = telefono or None
+    cliente.placa = placa or None
+    cliente.tipo_vehiculo = tipo_vehiculo or None
+    cliente.observaciones = observaciones or None
+    cliente.tarifa_mensual = max(0, tarifa_mensual)
+    cliente.dia_cobro = dia_cobro
+    db.session.commit()
+
+    firestore_guardar('clientes_cuenta', cliente.id, {
+        'id': cliente.id, 'nombre': cliente.nombre, 'telefono': cliente.telefono,
+        'placa': cliente.placa, 'tipo_vehiculo': cliente.tipo_vehiculo,
+        'observaciones': cliente.observaciones, 'tarifa_mensual': cliente.tarifa_mensual,
+        'dia_cobro': cliente.dia_cobro, 'activo': cliente.activo,
+        'fecha_creacion': cliente.fecha_creacion.isoformat() if cliente.fecha_creacion else None
+    })
+    flash(f"Datos de {cliente.nombre} actualizados correctamente. El historial de cobros y pagos se conserva.", "success")
     return redirect(url_for('index') + '#tab-cuentas')
 
 
