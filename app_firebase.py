@@ -883,24 +883,48 @@ HTML_TEMPLATE = """
 
                 <div class="col-lg-8">
                     <div class="panel-card border border-warning">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <div>
-                                <h5 class="fw-bold m-0 text-warning"><i class="bi bi-clipboard-check me-2"></i> LISTA DE COBRO — CLIENTES FIJOS</h5>
-                                <small class="text-muted">Aquí ves quién debe pagar este mes, cuánto cobrar y si ya se registró el cobro.</small>
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                                <div>
+                                    <h5 class="fw-bold m-0 text-warning">
+                                        <i class="bi bi-clipboard-check me-2"></i> LISTA DE COBRO — CLIENTES FIJOS
+                                    </h5>
+                                    <small class="text-muted">Aquí ves quién debe pagar este mes, cuánto cobrar y si ya se registró el cobro.</small>
+                                </div>
+                                <span class="badge bg-warning text-dark fs-6">{{ mes_actual }}</span>
                             </div>
-                            <span class="badge bg-warning text-dark">{{ mes_actual }}</span>
+
+                            <div class="p-3 rounded-3 border border-info bg-dark">
+                                <label for="buscarListaCobro" class="form-label text-info mb-2">
+                                    <i class="bi bi-search me-1"></i> BUSCAR EN LA LISTA DE COBRO
+                                </label>
+                                <div class="input-group input-group-lg">
+                                    <span class="input-group-text bg-dark text-info border-secondary">
+                                        <i class="bi bi-search"></i>
+                                    </span>
+                                    <input
+                                        type="search"
+                                        id="buscarListaCobro"
+                                        class="form-control"
+                                        placeholder="Escriba nombre del cliente o placa..."
+                                        autocomplete="off">
+                                    <button type="button" class="btn btn-outline-secondary" id="limpiarListaCobro">
+                                        <i class="bi bi-x-lg me-1"></i> Limpiar
+                                    </button>
+                                </div>
+                                <small id="resultadoBusquedaCobro" class="text-muted d-block mt-2">
+                                    Mostrando todos los clientes
+                                </small>
+                            </div>
                         </div>
-                        <div class="mb-3 position-relative">
-                            <i class="bi bi-search position-absolute text-muted" style="left:14px; top:50%; transform:translateY(-50%); z-index:2;"></i>
-                            <input type="text" id="buscarListaCobro" class="form-control ps-5" placeholder="Buscar cliente o placa rápidamente..." autocomplete="off">
-                        </div>
+
                         <div class="table-responsive">
                             <table class="table table-custom align-middle" id="tablaListaCobro">
                                 <thead><tr><th>Cliente</th><th>Placa</th><th>Cuota</th><th>Último abono</th><th>Saldo</th><th>Estado</th><th>Cobro</th></tr></thead>
                                 <tbody>
                                 {% for c in clientes_cuenta %}
                                     {% set info = lista_cobro.get(c.id) %}
-                                    <tr class="fila-lista-cobro">
+                                    <tr class="fila-lista-cobro" data-busqueda="{{ (c.nombre ~ ' ' ~ (c.placa or ''))|lower }}">
                                         <td><strong>{{ c.nombre }}</strong><br><small class="text-muted">Día {{ c.dia_cobro or 1 }}</small></td>
                                         <td class="font-monospace text-info fw-bold">{{ c.placa or '—' }}</td>
                                         <td class="fw-bold">${{ "{:,}".format(c.tarifa_mensual or 0).replace(',', '.') }}</td>
@@ -1120,16 +1144,49 @@ HTML_TEMPLATE = """
             const catSelect = document.getElementById('selectCategoria');
             if(catSelect) actualizarOpcionesVulcanizadora(catSelect);
 
+            // Buscador de la LISTA DE COBRO.
             const buscadorListaCobro = document.getElementById('buscarListaCobro');
+            const limpiarListaCobro = document.getElementById('limpiarListaCobro');
+            const resultadoBusquedaCobro = document.getElementById('resultadoBusquedaCobro');
+
+            function filtrarListaCobro() {
+                if (!buscadorListaCobro) return;
+
+                const texto = buscadorListaCobro.value.toLowerCase().trim();
+                const filas = document.querySelectorAll('#tablaListaCobro .fila-lista-cobro');
+                let visibles = 0;
+
+                filas.forEach(function(fila) {
+                    const contenido = fila.dataset.busqueda || fila.innerText.toLowerCase();
+                    const coincide = !texto || contenido.includes(texto);
+                    fila.style.display = coincide ? '' : 'none';
+                    if (coincide) visibles++;
+                });
+
+                if (resultadoBusquedaCobro) {
+                    if (!texto) {
+                        resultadoBusquedaCobro.textContent = 'Mostrando todos los clientes';
+                    } else if (visibles === 0) {
+                        resultadoBusquedaCobro.textContent = 'No se encontró ningún cliente o placa.';
+                    } else {
+                        resultadoBusquedaCobro.textContent = 'Resultados encontrados: ' + visibles;
+                    }
+                }
+            }
+
             if (buscadorListaCobro) {
-                buscadorListaCobro.addEventListener('input', function() {
-                    const texto = this.value.toLowerCase().trim();
-                    document.querySelectorAll('#tablaListaCobro .fila-lista-cobro').forEach(function(fila) {
-                        fila.style.display = fila.innerText.toLowerCase().includes(texto) ? '' : 'none';
-                    });
+                buscadorListaCobro.addEventListener('input', filtrarListaCobro);
+            }
+
+            if (limpiarListaCobro) {
+                limpiarListaCobro.addEventListener('click', function() {
+                    buscadorListaCobro.value = '';
+                    filtrarListaCobro();
+                    buscadorListaCobro.focus();
                 });
             }
 
+            // Buscador de la lista general de clientes.
             const buscadorCuenta = document.getElementById('buscarCuenta');
             if (buscadorCuenta) {
                 buscadorCuenta.addEventListener('input', function() {
