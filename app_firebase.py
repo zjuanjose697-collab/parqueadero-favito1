@@ -1021,7 +1021,10 @@ HTML_TEMPLATE = """
                                                         <div class="col-md-4"><div class="p-3 rounded border border-secondary"><small class="text-muted d-block">PLACA</small><strong>{{ c.placa or '—' }}</strong></div></div>
                                                     </div>
 
-                                                    <div class="d-flex justify-content-end mb-3">
+                                                    <div class="d-flex justify-content-end gap-2 mb-3">
+                                                        <button type="button" class="btn btn-outline-info btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#modalEditarCuenta{{ c.id }}">
+                                                            <i class="bi bi-pencil-square me-1"></i> Editar registro
+                                                        </button>
                                                         <form action="/cuentas/cliente/{{ c.id }}/eliminar" method="POST" onsubmit="return confirm('¿Eliminar definitivamente esta cuenta y TODOS sus cargos y abonos? Esta acción no se puede deshacer.');">
                                                             <button type="submit" class="btn btn-outline-danger btn-sm fw-bold">
                                                                 <i class="bi bi-trash me-1"></i> Eliminar cuenta
@@ -1079,6 +1082,34 @@ HTML_TEMPLATE = """
                                             </div>
                                         </div>
                                     </div>
+                            {% for c in clientes_cuenta %}
+                            <div class="modal fade" id="modalEditarCuenta{{ c.id }}" tabindex="-1">
+                                <div class="modal-dialog modal-lg">
+                                    <div class="modal-content bg-dark text-light border border-secondary">
+                                        <form action="/cuentas/cliente/{{ c.id }}/editar" method="POST">
+                                            <div class="modal-header border-secondary">
+                                                <h5 class="modal-title fw-bold"><i class="bi bi-pencil-square text-info me-2"></i>Editar registro</h5>
+                                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                <div class="row g-3">
+                                                    <div class="col-md-6"><label class="form-label">Nombre del cliente</label><input type="text" name="nombre" class="form-control" value="{{ c.nombre }}" required></div>
+                                                    <div class="col-md-6"><label class="form-label">Teléfono</label><input type="text" name="telefono" class="form-control" value="{{ c.telefono or '' }}"></div>
+                                                    <div class="col-md-6"><label class="form-label">Placa</label><input type="text" name="placa" class="form-control" value="{{ c.placa or '' }}"></div>
+                                                    <div class="col-md-6"><label class="form-label">Tipo de vehículo</label><select name="tipo_vehiculo" class="form-select"><option value="" {% if not c.tipo_vehiculo %}selected{% endif %}>Sin especificar</option><option value="carro" {% if c.tipo_vehiculo == 'carro' %}selected{% endif %}>Carro</option><option value="moto" {% if c.tipo_vehiculo == 'moto' %}selected{% endif %}>Moto</option><option value="camioneta" {% if c.tipo_vehiculo == 'camioneta' %}selected{% endif %}>Camioneta</option><option value="otro" {% if c.tipo_vehiculo == 'otro' %}selected{% endif %}>Otro</option></select></div>
+                                                    <div class="col-md-6"><label class="form-label">Cuota mensual</label><input type="text" name="tarifa_mensual" class="form-control" value="{{ c.tarifa_mensual or 0 }}"></div>
+                                                    <div class="col-md-6"><label class="form-label">Día de cobro</label><input type="number" name="dia_cobro" class="form-control" min="1" max="31" value="{{ c.dia_cobro or 1 }}"></div>
+                                                    <div class="col-12"><label class="form-label">Observaciones</label><textarea name="observaciones" class="form-control" rows="3">{{ c.observaciones or '' }}</textarea></div>
+                                                </div>
+                                            </div>
+                                            <div class="modal-footer border-secondary">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                                <button type="submit" class="btn btn-info fw-bold text-dark"><i class="bi bi-check-lg me-1"></i> Guardar cambios</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
                             {% endfor %}
                             {% if not clientes_cuenta %}
                                 <p class="text-center text-muted py-4 mb-0">Todavía no hay clientes fijos registrados.</p>
@@ -1996,6 +2027,42 @@ def cuenta_cliente_nuevo():
     flash(f"Cuenta creada para {nombre}.", "success")
     return redirect(url_for('index') + '#tab-cuentas')
 
+
+
+@app.route('/cuentas/cliente/<int:id>/editar', methods=['POST'])
+def cuenta_cliente_editar(id):
+    cliente = db.session.get(ClienteCuenta, id)
+    if not cliente:
+        flash("Cliente no encontrado.", "error")
+        return redirect(url_for('index') + '#tab-cuentas')
+
+    nombre = (request.form.get('nombre') or '').strip()
+    if not nombre:
+        flash("Debes ingresar el nombre del cliente.", "error")
+        return redirect(url_for('index') + '#tab-cuentas')
+
+    cliente.nombre = nombre
+    cliente.telefono = (request.form.get('telefono') or '').strip() or None
+    cliente.placa = (request.form.get('placa') or '').strip().upper() or None
+    cliente.tipo_vehiculo = (request.form.get('tipo_vehiculo') or '').strip() or None
+    cliente.observaciones = (request.form.get('observaciones') or '').strip() or None
+    cliente.tarifa_mensual = max(0, limpiar_monto(request.form.get('tarifa_mensual')))
+    try:
+        cliente.dia_cobro = min(31, max(1, int(request.form.get('dia_cobro') or 1)))
+    except (TypeError, ValueError):
+        cliente.dia_cobro = 1
+
+    db.session.commit()
+    firestore_guardar('clientes_cuenta', cliente.id, {
+        'id': cliente.id, 'nombre': cliente.nombre, 'telefono': cliente.telefono,
+        'placa': cliente.placa, 'tipo_vehiculo': cliente.tipo_vehiculo,
+        'observaciones': cliente.observaciones, 'tarifa_mensual': cliente.tarifa_mensual,
+        'dia_cobro': cliente.dia_cobro, 'activo': cliente.activo,
+        'fecha_creacion': cliente.fecha_creacion.isoformat() if cliente.fecha_creacion else None
+    })
+
+    flash(f"Registro de {cliente.nombre} actualizado correctamente.", "success")
+    return redirect(url_for('index') + '#tab-cuentas')
 
 @app.route('/cuentas/cobro_mensual', methods=['POST'])
 def cuenta_cobro_mensual():
