@@ -197,6 +197,8 @@ HTML_TEMPLATE = """
         .table-custom { color: var(--text); }
         .table-custom th { color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; border-bottom: 1px solid var(--border); padding: 12px; }
         .table-custom td { border-bottom: 1px solid var(--border); padding: 12px; vertical-align: middle; }
+        .buscador-cobro-conectado { border: 1px solid var(--accent); box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.08); }
+        .fila-lista-cobro.oculta, .fila-cuenta.oculta { display: none !important; }
     </style>
 </head>
 <body>
@@ -994,7 +996,14 @@ HTML_TEMPLATE = """
                                             </button>
                                         </td>
                                     </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
 
+                            <!-- Los modales se renderizan FUERA del <table>/<tbody>.
+                                 Esto evita que el navegador rompa la estructura de la tabla
+                                 y oculte filas cuando hay varios clientes. -->
+                            {% for c in clientes_cuenta %}
                                     <div class="modal fade" id="modalCuenta{{ c.id }}" tabindex="-1">
                                         <div class="modal-dialog modal-lg">
                                             <div class="modal-content bg-dark text-light border border-secondary">
@@ -1070,9 +1079,7 @@ HTML_TEMPLATE = """
                                             </div>
                                         </div>
                                     </div>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
+                            {% endfor %}
                             {% if not clientes_cuenta %}
                                 <p class="text-center text-muted py-4 mb-0">Todavía no hay clientes fijos registrados.</p>
                             {% endif %}
@@ -1191,7 +1198,8 @@ HTML_TEMPLATE = """
             if (buscadorCuenta) {
                 buscadorCuenta.addEventListener('input', function() {
                     const texto = this.value.toLowerCase().trim();
-                    document.querySelectorAll('#tablaCuentas .fila-cuenta').forEach(function(fila) {
+                    const filas = document.querySelectorAll('#tablaCuentas .fila-cuenta');
+                    filas.forEach(function(fila) {
                         fila.style.display = fila.innerText.toLowerCase().includes(texto) ? '' : 'none';
                     });
                 });
