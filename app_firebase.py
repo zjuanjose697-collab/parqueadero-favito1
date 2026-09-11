@@ -1082,6 +1082,7 @@ HTML_TEMPLATE = """
                                             </div>
                                         </div>
                                     </div>
+                            {% endfor %}
                             {% for c in clientes_cuenta %}
                             <div class="modal fade" id="modalEditarCuenta{{ c.id }}" tabindex="-1">
                                 <div class="modal-dialog modal-lg">
