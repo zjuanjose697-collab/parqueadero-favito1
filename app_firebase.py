@@ -1,5 +1,6 @@
 import os
-from datetime import datetime
+import calendar
+from datetime import datetime, date
 from io import BytesIO
 from zoneinfo import ZoneInfo
 from flask import Flask, request, redirect, url_for, flash, render_template_string, send_file
@@ -829,10 +830,14 @@ HTML_TEMPLATE = """
                             <div class="mb-3">
                                 <label class="form-label">Tipo de Vehículo</label>
                                 <select name="tipo_vehiculo" class="form-select">
-                                    <option value="">No especificado</option>
-                                    {% for t in tarifas %}
-                                        <option value="{{ t.nombre }}">{{ t.nombre }}</option>
-                                    {% endfor %}
+                                    <option value="">Sin especificar</option>
+                                    <option value="moto">Moto</option>
+                                    <option value="carro">Automóvil</option>
+                                    <option value="camioneta">Camioneta</option>
+                                    <option value="volqueta">Volqueta</option>
+                                    <option value="camion">Camión</option>
+                                    <option value="bus">Bus</option>
+                                    <option value="otro">Otro</option>
                                 </select>
                             </div>
                             <div class="mb-3">
@@ -891,7 +896,7 @@ HTML_TEMPLATE = """
                                     <h5 class="fw-bold m-0 text-warning">
                                         <i class="bi bi-clipboard-check me-2"></i> LISTA DE COBRO — CLIENTES FIJOS
                                     </h5>
-                                    <small class="text-muted">Aquí ves quién debe pagar este mes, cuánto cobrar y si ya se registró el cobro.</small>
+                                    <small class="text-muted">Aquí ves quién debe pagar este mes, cuánto cobrar y si ya se registró el cobro. Puedes registrar clientes fijos sin límite.</small>
                                 </div>
                                 <span class="badge bg-warning text-dark fs-6">{{ mes_actual }}</span>
                             </div>
@@ -920,37 +925,74 @@ HTML_TEMPLATE = """
                             </div>
                         </div>
 
-                        <div class="table-responsive">
-                            <table class="table table-custom align-middle" id="tablaListaCobro">
-                                <thead><tr><th>Cliente</th><th>Placa</th><th>Cuota</th><th>Último abono</th><th>Saldo</th><th>Estado</th><th>Cobro</th></tr></thead>
-                                <tbody>
-                                {% for c in clientes_cuenta %}
-                                    {% set info = lista_cobro.get(c.id) %}
-                                    <tr class="fila-lista-cobro" data-busqueda="{{ (c.nombre ~ ' ' ~ (c.placa or ''))|lower }}">
-                                        <td><strong>{{ c.nombre }}</strong><br><small class="text-muted">Día {{ c.dia_cobro or 1 }}</small></td>
-                                        <td class="font-monospace text-info fw-bold">{{ c.placa or '—' }}</td>
-                                        <td class="fw-bold">${{ "{:,}".format(c.tarifa_mensual or 0).replace(',', '.') }}</td>
-                                        <td>{{ info.ultimo_abono.strftime('%d/%m/%Y') if info and info.ultimo_abono else 'Nunca' }}</td>
-                                        <td class="fw-bold text-danger">${{ "{:,}".format(info.saldo if info else 0).replace(',', '.') }}</td>
-                                        <td>
-                                            {% if info and info.cobro_mes %}<span class="badge bg-success">Cobro generado</span>
-                                            {% elif (c.tarifa_mensual or 0) > 0 %}<span class="badge bg-warning text-dark">Por cobrar</span>
-                                            {% else %}<span class="badge bg-secondary">Sin cuota</span>{% endif %}
-                                        </td>
-                                        <td>
-                                            {% if (c.tarifa_mensual or 0) > 0 and not (info and info.cobro_mes) %}
-                                            <form action="/cuentas/cobro_mensual" method="POST">
-                                                <input type="hidden" name="cliente_id" value="{{ c.id }}">
-                                                <button class="btn btn-warning btn-sm fw-bold text-dark"><i class="bi bi-cash-coin me-1"></i> Generar cobro</button>
-                                            </form>
-                                            {% else %}<span class="text-muted small">Revisar cuenta</span>{% endif %}
-                                        </td>
-                                    </tr>
-                                {% else %}
-                                    <tr><td colspan="7" class="text-center text-muted py-4">No hay clientes fijos registrados.</td></tr>
-                                {% endfor %}
-                                </tbody>
-                            </table>
+                        {% for grupo in grupos_cobro %}
+                        {% if grupo.cantidad > 0 %}
+                        <div class="mb-4 grupo-lista-cobro" data-tipo-grupo="{{ grupo.key }}">
+                            <div class="d-flex justify-content-between align-items-center px-3 py-2 rounded-top border border-secondary bg-secondary bg-opacity-25">
+                                <div class="fw-bold text-info">
+                                    <i class="bi {{ grupo.icono }} me-2"></i>{{ grupo.titulo }}
+                                </div>
+                                <span class="badge bg-info text-dark">{{ grupo.cantidad }} cliente{% if grupo.cantidad != 1 %}s{% endif %}</span>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-custom align-middle tabla-lista-cobro mb-0">
+                                    <thead><tr><th>Cliente</th><th>Placa</th><th>Cuota</th><th>Último abono</th><th>Saldo</th><th>Estado</th><th>Cobro</th></tr></thead>
+                                    <tbody>
+                                    {% for c in grupo.clientes %}
+                                        {% set info = lista_cobro.get(c.id) %}
+                                        <tr class="fila-lista-cobro" data-busqueda="{{ (c.nombre ~ ' ' ~ (c.placa or '') ~ ' ' ~ grupo.titulo)|lower }}">
+                                            <td>
+                                                <strong>{{ c.nombre }}</strong><br>
+                                                <small class="text-muted">Día {{ c.dia_cobro or 1 }}</small><br>
+                                                {% if info and info.proximo_cobro %}
+                                                    <small class="text-info fw-semibold">Próximo: {{ info.proximo_cobro.strftime('%d/%m/%Y') }}</small><br>
+                                                    <small class="{{ info.clase_aviso }}">{{ info.aviso_cobro }}</small>
+                                                {% endif %}
+                                            </td>
+                                            <td class="font-monospace text-info fw-bold">{{ c.placa or '—' }}</td>
+                                            <td class="fw-bold">${{ "{:,}".format(c.tarifa_mensual or 0).replace(',', '.') }}</td>
+                                            <td>{{ info.ultimo_abono.strftime('%d/%m/%Y') if info and info.ultimo_abono else 'Nunca' }}</td>
+                                            <td class="fw-bold {% if info and info.saldo > 0 %}text-danger{% else %}text-success{% endif %}">${{ "{:,}".format(info.saldo if info else 0).replace(',', '.') }}</td>
+                                            <td>
+                                                {% if not (c.tarifa_mensual or 0) %}
+                                                    <span class="badge bg-secondary">Sin cuota</span>
+                                                {% elif info and info.saldo > 0 %}
+                                                    <span class="badge bg-danger">Pendiente</span>
+                                                {% elif info and info.cobro_mes %}
+                                                    <span class="badge bg-success">Al día</span>
+                                                {% else %}
+                                                    <span class="badge bg-warning text-dark">Por cobrar</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <div class="d-flex flex-column gap-1">
+                                                    {% if (c.tarifa_mensual or 0) > 0 and not (info and info.cobro_mes) %}
+                                                    <form action="/cuentas/cobro_mensual" method="POST">
+                                                        <input type="hidden" name="cliente_id" value="{{ c.id }}">
+                                                        <button class="btn btn-warning btn-sm fw-bold text-dark w-100"><i class="bi bi-journal-plus me-1"></i> Generar cobro</button>
+                                                    </form>
+                                                    {% endif %}
+                                                    {% if (info and info.saldo > 0) or (c.tarifa_mensual or 0) > 0 %}
+                                                    <button type="button" class="btn btn-success btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#modalCobroRapido{{ c.id }}">
+                                                        <i class="bi bi-cash-coin me-1"></i> Cobrar / Registrar pago
+                                                    </button>
+                                                    {% endif %}
+                                                    <button type="button" class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#modalCuenta{{ c.id }}">
+                                                        <i class="bi bi-eye me-1"></i> Ver cuenta
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                        {% if not clientes_cuenta %}
+                            <div class="text-center text-muted py-4">Todavía no hay clientes fijos registrados. Puedes agregar tantos como necesites.</div>
+                        {% endif %}
                         </div>
                     </div>
 
@@ -1084,6 +1126,43 @@ HTML_TEMPLATE = """
                                     </div>
                             {% endfor %}
                             {% for c in clientes_cuenta %}
+                            {% set info = lista_cobro.get(c.id) %}
+                            <div class="modal fade" id="modalCobroRapido{{ c.id }}" tabindex="-1">
+                                <div class="modal-dialog">
+                                    <div class="modal-content bg-dark text-light border border-success">
+                                        <form action="/cuentas/abono" method="POST">
+                                            <input type="hidden" name="cliente_id" value="{{ c.id }}">
+                                            <div class="modal-header border-secondary">
+                                                <div>
+                                                    <h5 class="modal-title fw-bold"><i class="bi bi-cash-coin text-success me-2"></i>Registrar pago</h5>
+                                                    <small class="text-muted">{{ c.nombre }}{% if c.placa %} · {{ c.placa }}{% endif %}</small>
+                                                </div>
+                                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                <div class="row g-3 mb-3">
+                                                    <div class="col-6"><div class="p-3 rounded border border-danger"><small class="text-muted d-block">SALDO PENDIENTE</small><strong class="fs-5 text-danger">${{ "{:,}".format(info.saldo if info else 0).replace(',', '.') }}</strong></div></div>
+                                                    <div class="col-6"><div class="p-3 rounded border border-info"><small class="text-muted d-block">CUOTA MENSUAL</small><strong class="fs-5 text-info">${{ "{:,}".format(c.tarifa_mensual or 0).replace(',', '.') }}</strong></div></div>
+                                                </div>
+                                                <label class="form-label fw-bold">Valor recibido</label>
+                                                <input type="text" name="monto" class="form-control form-control-lg" value="{{ c.tarifa_mensual or (info.saldo if info else 0) }}" placeholder="Ej: 30.000" required>
+                                                <label class="form-label fw-bold mt-3">Método de pago</label>
+                                                <select name="metodo_pago" class="form-select form-select-lg">
+                                                    <option value="Efectivo">Efectivo</option>
+                                                    <option value="Transferencia">Transferencia</option>
+                                                </select>
+                                                <div class="alert alert-info mt-3 mb-0 py-2 small">El pago se registra como ingreso en caja y se descuenta del saldo de esta cuenta.</div>
+                                            </div>
+                                            <div class="modal-footer border-secondary">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                                <button type="submit" class="btn btn-success fw-bold"><i class="bi bi-check-circle me-1"></i> Registrar pago</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                            {% for c in clientes_cuenta %}
                             <div class="modal fade" id="modalEditarCuenta{{ c.id }}" tabindex="-1">
                                 <div class="modal-dialog modal-lg">
                                     <div class="modal-content bg-dark text-light border border-secondary">
@@ -1097,7 +1176,7 @@ HTML_TEMPLATE = """
                                                     <div class="col-md-6"><label class="form-label">Nombre del cliente</label><input type="text" name="nombre" class="form-control" value="{{ c.nombre }}" required></div>
                                                     <div class="col-md-6"><label class="form-label">Teléfono</label><input type="text" name="telefono" class="form-control" value="{{ c.telefono or '' }}"></div>
                                                     <div class="col-md-6"><label class="form-label">Placa</label><input type="text" name="placa" class="form-control" value="{{ c.placa or '' }}"></div>
-                                                    <div class="col-md-6"><label class="form-label">Tipo de vehículo</label><select name="tipo_vehiculo" class="form-select"><option value="" {% if not c.tipo_vehiculo %}selected{% endif %}>Sin especificar</option><option value="carro" {% if c.tipo_vehiculo == 'carro' %}selected{% endif %}>Carro</option><option value="moto" {% if c.tipo_vehiculo == 'moto' %}selected{% endif %}>Moto</option><option value="camioneta" {% if c.tipo_vehiculo == 'camioneta' %}selected{% endif %}>Camioneta</option><option value="otro" {% if c.tipo_vehiculo == 'otro' %}selected{% endif %}>Otro</option></select></div>
+                                                    <div class="col-md-6"><label class="form-label">Tipo de vehículo</label><select name="tipo_vehiculo" class="form-select"><option value="" {% if not c.tipo_vehiculo %}selected{% endif %}>Sin especificar</option><option value="moto" {% if c.tipo_vehiculo == 'moto' %}selected{% endif %}>Moto</option><option value="carro" {% if c.tipo_vehiculo == 'carro' %}selected{% endif %}>Automóvil</option><option value="camioneta" {% if c.tipo_vehiculo == 'camioneta' %}selected{% endif %}>Camioneta</option><option value="volqueta" {% if c.tipo_vehiculo == 'volqueta' %}selected{% endif %}>Volqueta</option><option value="camion" {% if c.tipo_vehiculo == 'camion' %}selected{% endif %}>Camión</option><option value="bus" {% if c.tipo_vehiculo == 'bus' %}selected{% endif %}>Bus</option><option value="otro" {% if c.tipo_vehiculo == 'otro' %}selected{% endif %}>Otro</option></select></div>
                                                     <div class="col-md-6"><label class="form-label">Cuota mensual</label><input type="text" name="tarifa_mensual" class="form-control" value="{{ c.tarifa_mensual or 0 }}"></div>
                                                     <div class="col-md-6"><label class="form-label">Día de cobro</label><input type="number" name="dia_cobro" class="form-control" min="1" max="31" value="{{ c.dia_cobro or 1 }}"></div>
                                                     <div class="col-12"><label class="form-label">Observaciones</label><textarea name="observaciones" class="form-control" rows="3">{{ c.observaciones or '' }}</textarea></div>
@@ -1192,7 +1271,7 @@ HTML_TEMPLATE = """
                 if (!buscadorListaCobro) return;
 
                 const texto = buscadorListaCobro.value.toLowerCase().trim();
-                const filas = document.querySelectorAll('#tablaListaCobro .fila-lista-cobro');
+                const filas = document.querySelectorAll('.tabla-lista-cobro .fila-lista-cobro');
                 let visibles = 0;
 
                 filas.forEach(function(fila) {
@@ -1330,16 +1409,76 @@ def index():
         movs = movimientos_cuenta.get(c.id, [])
         cobro_mes = next((m for m in movs if m.tipo == 'cargo' and m.fecha >= inicio_mes and m.fecha < siguiente_mes and m.concepto.startswith('Cuota mensual')), None)
         ultimo_abono = next((m.fecha for m in movs if m.tipo == 'abono'), None)
+        saldo_actual = saldos_cuenta.get(c.id, 0)
+        # Próximo cobro: si ya hubo un abono, se toma un mes después del último
+        # pago; si nunca ha pagado, se usa el día de cobro configurado.
+        if ultimo_abono:
+            y = ultimo_abono.year + (1 if ultimo_abono.month == 12 else 0)
+            m = 1 if ultimo_abono.month == 12 else ultimo_abono.month + 1
+            d = min(ultimo_abono.day, calendar.monthrange(y, m)[1])
+            proximo_cobro = datetime(y, m, d)
+        elif (c.tarifa_mensual or 0) > 0:
+            d = min(c.dia_cobro or 1, calendar.monthrange(ahora.year, ahora.month)[1])
+            proximo_cobro = datetime(ahora.year, ahora.month, d)
+            if proximo_cobro.date() < ahora.date():
+                y = ahora.year + (1 if ahora.month == 12 else 0)
+                m = 1 if ahora.month == 12 else ahora.month + 1
+                d = min(c.dia_cobro or 1, calendar.monthrange(y, m)[1])
+                proximo_cobro = datetime(y, m, d)
+        else:
+            proximo_cobro = None
+
+        dias_para_cobro = (proximo_cobro.date() - ahora.date()).days if proximo_cobro else None
+        if not proximo_cobro or not (c.tarifa_mensual or 0):
+            aviso_cobro, clase_aviso = '', 'text-muted'
+        elif dias_para_cobro < 0:
+            aviso_cobro, clase_aviso = f'🔴 Cobro vencido hace {abs(dias_para_cobro)} días', 'text-danger fw-bold'
+        elif dias_para_cobro == 0:
+            aviso_cobro, clase_aviso = '🔔 HOY ES DÍA DE COBRO', 'text-warning fw-bold'
+        elif dias_para_cobro == 1:
+            aviso_cobro, clase_aviso = '⚠️ Mañana es día de cobro', 'text-warning fw-bold'
+        elif dias_para_cobro <= 7:
+            aviso_cobro, clase_aviso = f'⚠️ Faltan {dias_para_cobro} días', 'text-warning fw-bold'
+        else:
+            aviso_cobro, clase_aviso = f'Faltan {dias_para_cobro} días', 'text-muted'
+
         lista_cobro[c.id] = type('InfoCobro', (), {
             'cobro_mes': cobro_mes,
             'ultimo_abono': ultimo_abono,
-            'saldo': saldos_cuenta.get(c.id, 0)
+            'saldo': saldo_actual,
+            'proximo_cobro': proximo_cobro,
+            'dias_para_cobro': dias_para_cobro,
+            'aviso_cobro': aviso_cobro,
+            'clase_aviso': clase_aviso
         })()
 
     meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
     mes_actual = f"{meses[ahora.month - 1]} {ahora.year}"
     cuentas_pendientes = sum(1 for saldo in saldos_cuenta.values() if saldo > 0)
     total_por_cobrar = sum(saldos_cuenta.values())
+
+    # Agrupación visual de clientes fijos por tipo de vehículo.
+    # No existe un límite de cantidad de clientes: se incluyen todos los registros activos.
+    tipos_cobro = [
+        ('moto', 'MOTOS', 'bi-scooter'),
+        ('carro', 'AUTOMÓVILES', 'bi-car-front-fill'),
+        ('camioneta', 'CAMIONETAS', 'bi-car-front'),
+        ('volqueta', 'VOLQUETAS', 'bi-truck'),
+        ('camion', 'CAMIONES', 'bi-truck-front-fill'),
+        ('bus', 'BUSES', 'bi-bus-front-fill'),
+        ('otro', 'OTROS VEHÍCULOS', 'bi-three-dots'),
+        ('', 'SIN TIPO ESPECIFICADO', 'bi-question-circle'),
+    ]
+    grupos_cobro = []
+    for tipo_key, titulo_tipo, icono_tipo in tipos_cobro:
+        clientes_grupo = [c for c in clientes_cuenta if (c.tipo_vehiculo or '').strip().lower() == tipo_key]
+        grupos_cobro.append({
+            'key': tipo_key,
+            'titulo': titulo_tipo,
+            'icono': icono_tipo,
+            'clientes': clientes_grupo,
+            'cantidad': len(clientes_grupo),
+        })
 
     abonos_cuenta = MovimientoCuenta.query.filter(
         MovimientoCuenta.tipo == 'abono',
@@ -1392,6 +1531,7 @@ def index():
         cuentas_pendientes=cuentas_pendientes,
         total_por_cobrar=total_por_cobrar,
         lista_cobro=lista_cobro,
+        grupos_cobro=grupos_cobro,
         mes_actual=mes_actual,
     )
 
