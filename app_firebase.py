@@ -2422,7 +2422,10 @@ def actualizar_tarifa(id):
 
 
 # --- CARGA INICIAL DE CLIENTES DEL CUADERNO (DIA 28) ---
-# Se ejecuta de forma idempotente: si una placa ya existe, no se duplica ni se modifica.
+# Importación automática e idempotente.
+# Si el registro ya existe en SQLite, no se toca.
+# Si existe solo en Firestore, se recupera a SQLite para que vuelva a aparecer en la página.
+# Si no existe en ningún lado, se crea y se guarda también en Firestore.
 CLIENTES_CUADERNO_DIA_28 = [
     # Placa, nombre (solo cuando se lee con suficiente claridad)
     ('OKE585', ''),
@@ -2473,33 +2476,62 @@ CLIENTES_CUADERNO_DIA_28 = [
     ('ANL79F', 'Hernando'),
     ('PHD53F', 'Esposa Diego'),
     ('MNY220', 'Hugo'),
-    ('CPY709', ''),
 ]
 
 def importar_clientes_cuaderno_dia_28():
-    """Registra automáticamente las placas del cuaderno con día de cobro 28.
-    No sobrescribe clientes existentes y guarda cada nuevo registro también en Firestore.
+    """Carga automáticamente los registros del cuaderno con cobro el día 28.
+
+    Es segura para nuevos despliegues: si el cliente ya está en Firestore pero
+    no está en el SQLite local, lo recupera desde Firestore en vez de ocultarlo.
     """
     creados = 0
-    for placa, nombre in CLIENTES_CUADERNO_DIA_28:
-        placa = (placa or '').strip().upper()
-        if not placa:
+    recuperados = 0
+    vistos = set()
+
+    for placa, nombre_lectura in CLIENTES_CUADERNO_DIA_28:
+        placa = (placa or '').strip().upper().replace(' ', '')
+        if not placa or placa in vistos:
             continue
+        vistos.add(placa)
+
+        # 1) Si ya está en SQLite, no tocar el registro existente.
         existente = ClienteCuenta.query.filter_by(placa=placa).first()
         if existente:
             continue
 
-        # También revisamos Firestore para evitar duplicados si Render recrea
-        # la base SQLite local durante un nuevo despliegue.
+        # 2) Si está en Firestore, recuperarlo a SQLite para que aparezca en la web.
+        datos_nube = None
         try:
-            nube = list(firestore_db.collection('clientes_cuenta').where('placa', '==', placa).limit(1).stream())
-            if nube:
-                continue
+            resultados = list(
+                firestore_db.collection('clientes_cuenta')
+                .where('placa', '==', placa)
+                .limit(1)
+                .stream()
+            )
+            if resultados:
+                datos_nube = resultados[0].to_dict() or {}
         except Exception as e:
             print(f'FIRESTORE CHECK ERROR ({placa}): {e}')
 
+        if datos_nube:
+            nombre = (datos_nube.get('nombre') or nombre_lectura or '').strip() or f'Cliente {placa}'
+            cliente = ClienteCuenta(
+                nombre=nombre,
+                telefono=datos_nube.get('telefono'),
+                placa=placa,
+                tipo_vehiculo=datos_nube.get('tipo_vehiculo'),
+                observaciones=datos_nube.get('observaciones') or 'Importado del cuaderno - cobro día 28',
+                tarifa_mensual=int(datos_nube.get('tarifa_mensual') or 0),
+                dia_cobro=int(datos_nube.get('dia_cobro') or 28),
+                activo=bool(datos_nube.get('activo', True)),
+            )
+            db.session.add(cliente)
+            recuperados += 1
+            continue
+
+        # 3) No existe en ninguno de los dos sitios: crear el registro nuevo.
         cliente = ClienteCuenta(
-            nombre=(nombre or '').strip() or f'Cliente {placa}',
+            nombre=(nombre_lectura or '').strip() or f'Cliente {placa}',
             telefono=None,
             placa=placa,
             tipo_vehiculo=None,
@@ -2523,9 +2555,12 @@ def importar_clientes_cuaderno_dia_28():
             'fecha_creacion': cliente.fecha_creacion.isoformat() if cliente.fecha_creacion else None
         })
         creados += 1
-    if creados:
+
+    if creados or recuperados:
         db.session.commit()
-    return creados
+
+    print(f'CARGA CUADERNO DIA 28: nuevos={creados}, recuperados_desde_firestore={recuperados}')
+    return creados + recuperados
 
 with app.app_context():
     db.create_all()
@@ -2550,3 +2585,4 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=False)
+
