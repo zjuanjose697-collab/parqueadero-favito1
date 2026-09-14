@@ -928,13 +928,12 @@ HTML_TEMPLATE = """
                         {% for grupo in grupos_cobro %}
                         {% if grupo.cantidad > 0 %}
                         <div class="mb-4 grupo-lista-cobro" data-tipo-grupo="{{ grupo.key }}">
-                            <div class="d-flex justify-content-between align-items-center px-3 py-2 rounded-top border border-secondary bg-secondary bg-opacity-25">
-                                <div class="fw-bold text-info">
-                                    <i class="bi {{ grupo.icono }} me-2"></i>{{ grupo.titulo }}
-                                </div>
-                                <span class="badge bg-info text-dark">{{ grupo.cantidad }} cliente{% if grupo.cantidad != 1 %}s{% endif %}</span>
-                            </div>
-                            <div class="table-responsive">
+                            <button type="button" class="w-100 d-flex justify-content-between align-items-center px-3 py-2 rounded-top border border-secondary bg-secondary bg-opacity-25 text-start" data-bs-toggle="collapse" data-bs-target="#grupoCobro{{ loop.index }}" aria-expanded="false" aria-controls="grupoCobro{{ loop.index }}" style="color: inherit;">
+                                <span class="fw-bold text-info"><i class="bi {{ grupo.icono }} me-2"></i>{{ grupo.titulo }}</span>
+                                <span class="d-flex align-items-center gap-2"><span class="badge bg-info text-dark">{{ grupo.cantidad }} cliente{% if grupo.cantidad != 1 %}s{% endif %}</span><i class="bi bi-chevron-down text-info flecha-grupo-cobro"></i></span>
+                            </button>
+                            <div id="grupoCobro{{ loop.index }}" class="collapse">
+                                <div class="table-responsive">
                                 <table class="table table-custom align-middle tabla-lista-cobro mb-0">
                                     <thead><tr><th>Cliente</th><th>Placa</th><th>Cuota</th><th>Último abono</th><th>Saldo</th><th>Estado</th><th>Cobro</th></tr></thead>
                                     <tbody>
@@ -986,6 +985,7 @@ HTML_TEMPLATE = """
                                     {% endfor %}
                                     </tbody>
                                 </table>
+                                </div>
                             </div>
                         </div>
                         {% endif %}
@@ -1295,6 +1295,18 @@ HTML_TEMPLATE = """
             if (buscadorListaCobro) {
                 buscadorListaCobro.addEventListener('input', filtrarListaCobro);
             }
+
+            // Las categorías de la lista de cobro se pueden abrir y cerrar al hacer clic.
+            document.querySelectorAll('.grupo-lista-cobro .collapse').forEach(function(panel) {
+                panel.addEventListener('show.bs.collapse', function() {
+                    const icono = this.previousElementSibling && this.previousElementSibling.querySelector('.flecha-grupo-cobro');
+                    if (icono) { icono.classList.remove('bi-chevron-down'); icono.classList.add('bi-chevron-up'); }
+                });
+                panel.addEventListener('hide.bs.collapse', function() {
+                    const icono = this.previousElementSibling && this.previousElementSibling.querySelector('.flecha-grupo-cobro');
+                    if (icono) { icono.classList.remove('bi-chevron-up'); icono.classList.add('bi-chevron-down'); }
+                });
+            });
 
             if (limpiarListaCobro) {
                 limpiarListaCobro.addEventListener('click', function() {
