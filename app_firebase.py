@@ -2420,6 +2420,113 @@ def actualizar_tarifa(id):
     flash(f"Tarifas para {tarifa.nombre} actualizadas.", "success")
     return redirect(url_for('index'))
 
+
+# --- CARGA INICIAL DE CLIENTES DEL CUADERNO (DIA 28) ---
+# Se ejecuta de forma idempotente: si una placa ya existe, no se duplica ni se modifica.
+CLIENTES_CUADERNO_DIA_28 = [
+    # Placa, nombre (solo cuando se lee con suficiente claridad)
+    ('OKE585', ''),
+    ('OUD070', ''),
+    ('WPS788', ''),
+    ('QIT974', 'Don Jorge'),
+    ('GII572', ''),
+    ('WCO582', 'Mario Medellín'),
+    ('SNO442', 'Berto'),
+    ('WFU533', 'Carito'),
+    ('TDZ657', 'Bombón'),
+    ('SNO505', 'Fabio'),
+    ('ULH263', 'Fabio'),
+    ('SNP335', ''),
+    ('WCO548', ''),
+    ('LKY583', 'Ochoa'),
+    ('GQZ256', 'Fika'),
+    ('SMO555', 'Calman'),
+    ('KZL793', 'Enrique'),
+    ('OUE087', 'Bombero'),
+    ('IRE412', ''),
+    ('ZAL163', 'Doña Fatima'),
+    ('OLJ102', 'Berto'),
+    ('WBG969', 'Miguel'),
+    ('HIJ335', 'Doncel'),
+    ('JOA634', 'Chevrolet'),
+    ('KKK969', ''),
+    ('THI403', 'Hugo Don Jorge'),
+    ('CPY709', ''),
+    ('KXF460', ''),
+    ('KAO672', 'Bombero'),
+    ('PDD06B', 'Enrique'),
+    ('ABH341', 'Ramon'),
+    ('BWU919', 'Betty'),
+    ('DXR762', 'Jesus Profe'),
+    ('AEP422', 'Humberto'),
+    ('JFU153', 'Callano'),
+    ('SWX121', 'Cuca'),
+    ('LBU141', ''),
+    ('ITZ938', 'Pelusa'),
+    ('DHS121', 'Don Carlos'),
+    ('BYE670', 'Andres Quevedo'),
+    ('ITJ059', 'Chamos'),
+    ('KHU36E', 'Primo'),
+    ('LNU90E', 'Yuli'),
+    ('EPX64F', 'Nicanor'),
+    ('EES86E', 'Pope Luis'),
+    ('ANL79F', 'Hernando'),
+    ('PHD53F', 'Esposa Diego'),
+    ('MNY220', 'Hugo'),
+    ('CPY709', ''),
+]
+
+def importar_clientes_cuaderno_dia_28():
+    """Registra automáticamente las placas del cuaderno con día de cobro 28.
+    No sobrescribe clientes existentes y guarda cada nuevo registro también en Firestore.
+    """
+    creados = 0
+    for placa, nombre in CLIENTES_CUADERNO_DIA_28:
+        placa = (placa or '').strip().upper()
+        if not placa:
+            continue
+        existente = ClienteCuenta.query.filter_by(placa=placa).first()
+        if existente:
+            continue
+
+        # También revisamos Firestore para evitar duplicados si Render recrea
+        # la base SQLite local durante un nuevo despliegue.
+        try:
+            nube = list(firestore_db.collection('clientes_cuenta').where('placa', '==', placa).limit(1).stream())
+            if nube:
+                continue
+        except Exception as e:
+            print(f'FIRESTORE CHECK ERROR ({placa}): {e}')
+
+        cliente = ClienteCuenta(
+            nombre=(nombre or '').strip() or f'Cliente {placa}',
+            telefono=None,
+            placa=placa,
+            tipo_vehiculo=None,
+            observaciones='Importado del cuaderno - cobro día 28',
+            tarifa_mensual=0,
+            dia_cobro=28,
+            activo=True,
+        )
+        db.session.add(cliente)
+        db.session.flush()
+        firestore_guardar('clientes_cuenta', cliente.id, {
+            'id': cliente.id,
+            'nombre': cliente.nombre,
+            'telefono': cliente.telefono,
+            'placa': cliente.placa,
+            'tipo_vehiculo': cliente.tipo_vehiculo,
+            'observaciones': cliente.observaciones,
+            'tarifa_mensual': cliente.tarifa_mensual,
+            'dia_cobro': cliente.dia_cobro,
+            'activo': cliente.activo,
+            'fecha_creacion': cliente.fecha_creacion.isoformat() if cliente.fecha_creacion else None
+        })
+        creados += 1
+    if creados:
+        db.session.commit()
+    return creados
+
 with app.app_context():
     db.create_all()
     # Migración simple para instalaciones SQLite existentes: agrega los nuevos campos
@@ -2437,6 +2544,7 @@ with app.app_context():
     if 'dia_cobro' not in columnas_cliente:
         db.session.execute(text('ALTER TABLE cliente_cuenta ADD COLUMN dia_cobro INTEGER DEFAULT 1'))
     db.session.commit()
+    importar_clientes_cuaderno_dia_28()
 
 if __name__ == '__main__':
     with app.app_context():
