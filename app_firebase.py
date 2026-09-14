@@ -2429,65 +2429,65 @@ def actualizar_tarifa(id):
 # No toca vehículos del parqueadero, caja, gastos, lavado, etc.
 CLIENTES_CUADERNO_DIA_18 = [
     # MOTOS
-    ('LNU90E', ''),
-    ('COD69F', 'PROFE'),
-    ('ALG57D', 'Cristian'),
-    ('PDK38F', 'Chespinoza'),
-    ('IGA22F', 'Felipe'),
-    ('RVL91G', ''),
-    ('FYS42G', ''),
-    ('REB63D', 'PROFE'),
-    ('MQX51G', ''),
-    ('QWR62D', ''),
-    ('LOJ05G', 'Cayano'),
-    ('OWA81F', ''),
-    ('SVA96F', 'Asdrúbal'),
-    ('MKP59D', ''),
-    ('VSG70F', 'Piquín'),
-    ('7HK06E', 'Diego'),
-    ('DED50G', ''),
-    ('MNY22D', 'Hugo'),
-    ('PHD53F', 'Hugo'),
-    ('SGRX64F', 'Luis'),
-    ('WTA090', 'Luis Fernando'),
-    ('KMU36D', 'Santiago'),
-    ('DHW75E', 'Diego'),
-    ('KUM37D', ''),
-    ('PRL30C', 'Sebastián'),
-    ('AOL51E', 'José'),
-    ('VER52D', 'Juliana'),
-    ('HQX69E', ''),
-    ('ERY57F', ''),
+    ('LNU90E', '', 'moto'),
+    ('COD69F', 'PROFE', 'moto'),
+    ('ALG57D', 'Cristian', 'moto'),
+    ('PDK38F', 'Chespinoza', 'moto'),
+    ('IGA22F', 'Felipe', 'moto'),
+    ('RVL91G', '', 'moto'),
+    ('FYS42G', '', 'moto'),
+    ('REB63D', 'PROFE', 'moto'),
+    ('MQX51G', '', 'moto'),
+    ('QWR62D', '', 'moto'),
+    ('LOJ05G', 'Cayano', 'moto'),
+    ('OWA81F', '', 'moto'),
+    ('SVA96F', 'Asdrúbal', 'moto'),
+    ('MKP59D', '', 'moto'),
+    ('VSG70F', 'Piquín', 'moto'),
+    ('7HK06E', 'Diego', 'moto'),
+    ('DED50G', '', 'moto'),
+    ('MNY22D', 'Hugo', 'moto'),
+    ('PHD53F', 'Hugo', 'moto'),
+    ('SGRX64F', 'Luis', 'moto'),
+    ('WTA090', 'Luis Fernando', 'moto'),
+    ('KMU36D', 'Santiago', 'moto'),
+    ('DHW75E', 'Diego', 'moto'),
+    ('KUM37D', '', 'moto'),
+    ('PRL30C', 'Sebastián', 'moto'),
+    ('AOL51E', 'José', 'moto'),
+    ('VER52D', 'Juliana', 'moto'),
+    ('HQX69E', '', 'moto'),
+    ('ERY57F', '', 'moto'),
 
     # VOLQUETAS
-    ('SNP335', 'Víctor'),
-    ('OOD070', 'Hugo'),
-    ('SRO723', ''),
-    ('SWR078', ''),
-    ('ULH263', 'Mario Arias'),
-    ('SON505', 'Santiago'),
-    ('SWO492', 'Salchichón'),
-    ('SNR453', 'Jhonier'),
-    ('STZ911', 'Orlando'),
-    ('TER417', 'Monte Verde'),
-    ('THY235', 'Mogigiso Yano'),
-    ('HIL335', 'Daniel'),
-    ('SMO535', 'Caiman'),
-    ('SNZ403', 'Garbacho Yano'),
+    ('SNP335', 'Víctor', 'volqueta'),
+    ('OOD070', 'Hugo', 'volqueta'),
+    ('SRO723', '', 'volqueta'),
+    ('SWR078', '', 'volqueta'),
+    ('ULH263', 'Mario Arias', 'volqueta'),
+    ('SON505', 'Santiago', 'volqueta'),
+    ('SWO492', 'Salchichón', 'volqueta'),
+    ('SNR453', 'Jhonier', 'volqueta'),
+    ('STZ911', 'Orlando', 'volqueta'),
+    ('TER417', 'Monte Verde', 'volqueta'),
+    ('THY235', 'Mogigiso Yano', 'volqueta'),
+    ('HIL335', 'Daniel', 'volqueta'),
+    ('SMO535', 'Caiman', 'volqueta'),
+    ('SNZ403', 'Garbacho Yano', 'volqueta'),
 
     # CAMIONES
-    ('TRD786', 'Enrique'),
-    ('WPS788', 'Hugo'),
-    ('S7D237', ''),
-    ('ZNE433', 'Cayetano'),
-    ('WCE428', 'Perucho'),
-    ('HID758', 'Perucho'),
-    ('OYE230', 'Orlando'),
-    ('SYB606', 'Juvenal'),
-    ('WEJ518', 'Juvenal'),
-    ('WWJ896', 'Pangora'),
-    ('VSB077', 'Chiva Fabio'),
-    ('KES585', ''),
+    ('TRD786', 'Enrique', 'camion'),
+    ('WPS788', 'Hugo', 'camion'),
+    ('S7D237', '', 'camion'),
+    ('ZNE433', 'Cayetano', 'camion'),
+    ('WCE428', 'Perucho', 'camion'),
+    ('HID758', 'Perucho', 'camion'),
+    ('OYE230', 'Orlando', 'camion'),
+    ('SYB606', 'Juvenal', 'camion'),
+    ('WEJ518', 'Juvenal', 'camion'),
+    ('WWJ896', 'Pangora', 'camion'),
+    ('VSB077', 'Chiva Fabio', 'camion'),
+    ('KES585', '', 'camion'),
 ]
 
 def reemplazar_clientes_cuaderno_dia_18():
@@ -2497,7 +2497,7 @@ def reemplazar_clientes_cuaderno_dia_18():
     Borra también los movimientos de esas cuentas para no dejar huérfanos.
     No toca ninguna otra tabla del sistema.
     """
-    MARCADOR = 'cuentas_cuaderno_reemplazadas_dia18_v1'
+    MARCADOR = 'cuentas_cuaderno_reemplazadas_dia18_v2_separadas'
     try:
         ya_hecho = firestore_db.collection('_config').document(MARCADOR).get()
         if ya_hecho.exists:
@@ -2525,7 +2525,7 @@ def reemplazar_clientes_cuaderno_dia_18():
         creados = 0
         vistos = set()
 
-        for placa, nombre in CLIENTES_CUADERNO_DIA_18:
+        for placa, nombre, tipo_vehiculo in CLIENTES_CUADERNO_DIA_18:
             placa = (placa or '').strip().upper()
             if not placa or placa in vistos:
                 continue
@@ -2535,7 +2535,7 @@ def reemplazar_clientes_cuaderno_dia_18():
                 nombre=(nombre or '').strip() or f'Cliente {placa}',
                 telefono=None,
                 placa=placa,
-                tipo_vehiculo=None,
+                tipo_vehiculo=tipo_vehiculo,
                 observaciones='Importado del cuaderno - cobro día 18',
                 tarifa_mensual=0,
                 dia_cobro=18,
@@ -2561,10 +2561,10 @@ def reemplazar_clientes_cuaderno_dia_18():
         db.session.commit()
 
         firestore_db.collection('_config').document(MARCADOR).set({
-            'version': 1,
+            'version': 2,
             'dia_cobro': 18,
             'cantidad_registros': creados,
-            'descripcion': 'Carga maestra de motos, volquetas y camiones del cuaderno',
+            'descripcion': 'Carga maestra de motos, volquetas y camiones del cuaderno, separadas por tipo',
             'fecha': hora_colombia().isoformat()
         })
 
