@@ -2422,145 +2422,159 @@ def actualizar_tarifa(id):
 
 
 # --- CARGA INICIAL DE CLIENTES DEL CUADERNO (DIA 28) ---
-# Importación automática e idempotente.
-# Si el registro ya existe en SQLite, no se toca.
-# Si existe solo en Firestore, se recupera a SQLite para que vuelva a aparecer en la página.
-# Si no existe en ningún lado, se crea y se guarda también en Firestore.
-CLIENTES_CUADERNO_DIA_28 = [
-    # Placa, nombre (solo cuando se lee con suficiente claridad)
-    ('OKE585', ''),
-    ('OUD070', ''),
-    ('WPS788', ''),
-    ('QIT974', 'Don Jorge'),
-    ('GII572', ''),
-    ('WCO582', 'Mario Medellín'),
-    ('SNO442', 'Berto'),
-    ('WFU533', 'Carito'),
-    ('TDZ657', 'Bombón'),
-    ('SNO505', 'Fabio'),
-    ('ULH263', 'Fabio'),
-    ('SNP335', ''),
-    ('WCO548', ''),
-    ('LKY583', 'Ochoa'),
-    ('GQZ256', 'Fika'),
-    ('SMO555', 'Calman'),
-    ('KZL793', 'Enrique'),
-    ('OUE087', 'Bombero'),
-    ('IRE412', ''),
-    ('ZAL163', 'Doña Fatima'),
-    ('OLJ102', 'Berto'),
-    ('WBG969', 'Miguel'),
-    ('HIJ335', 'Doncel'),
-    ('JOA634', 'Chevrolet'),
-    ('KKK969', ''),
-    ('THI403', 'Hugo Don Jorge'),
-    ('CPY709', ''),
-    ('KXF460', ''),
-    ('KAO672', 'Bombero'),
-    ('PDD06B', 'Enrique'),
-    ('ABH341', 'Ramon'),
-    ('BWU919', 'Betty'),
-    ('DXR762', 'Jesus Profe'),
-    ('AEP422', 'Humberto'),
-    ('JFU153', 'Callano'),
-    ('SWX121', 'Cuca'),
-    ('LBU141', ''),
-    ('ITZ938', 'Pelusa'),
-    ('DHS121', 'Don Carlos'),
-    ('BYE670', 'Andres Quevedo'),
-    ('ITJ059', 'Chamos'),
-    ('KHU36E', 'Primo'),
-    ('LNU90E', 'Yuli'),
-    ('EPX64F', 'Nicanor'),
-    ('EES86E', 'Pope Luis'),
-    ('ANL79F', 'Hernando'),
-    ('PHD53F', 'Esposa Diego'),
-    ('MNY220', 'Hugo'),
+# Se ejecuta de forma idempotente: si una placa ya existe, no se duplica ni se modifica.
+
+# --- LISTA MAESTRA DEL CUADERNO: CLIENTES FIJOS DEL DÍA 18 ---
+# Esta carga reemplaza únicamente la lista de Cuentas Clientes.
+# No toca vehículos del parqueadero, caja, gastos, lavado, etc.
+CLIENTES_CUADERNO_DIA_18 = [
+    # MOTOS
+    ('LNU90E', ''),
+    ('COD69F', 'PROFE'),
+    ('ALG57D', 'Cristian'),
+    ('PDK38F', 'Chespinoza'),
+    ('IGA22F', 'Felipe'),
+    ('RVL91G', ''),
+    ('FYS42G', ''),
+    ('REB63D', 'PROFE'),
+    ('MQX51G', ''),
+    ('QWR62D', ''),
+    ('LOJ05G', 'Cayano'),
+    ('OWA81F', ''),
+    ('SVA96F', 'Asdrúbal'),
+    ('MKP59D', ''),
+    ('VSG70F', 'Piquín'),
+    ('7HK06E', 'Diego'),
+    ('DED50G', ''),
+    ('MNY22D', 'Hugo'),
+    ('PHD53F', 'Hugo'),
+    ('SGRX64F', 'Luis'),
+    ('WTA090', 'Luis Fernando'),
+    ('KMU36D', 'Santiago'),
+    ('DHW75E', 'Diego'),
+    ('KUM37D', ''),
+    ('PRL30C', 'Sebastián'),
+    ('AOL51E', 'José'),
+    ('VER52D', 'Juliana'),
+    ('HQX69E', ''),
+    ('ERY57F', ''),
+
+    # VOLQUETAS
+    ('SNP335', 'Víctor'),
+    ('OOD070', 'Hugo'),
+    ('SRO723', ''),
+    ('SWR078', ''),
+    ('ULH263', 'Mario Arias'),
+    ('SON505', 'Santiago'),
+    ('SWO492', 'Salchichón'),
+    ('SNR453', 'Jhonier'),
+    ('STZ911', 'Orlando'),
+    ('TER417', 'Monte Verde'),
+    ('THY235', 'Mogigiso Yano'),
+    ('HIL335', 'Daniel'),
+    ('SMO535', 'Caiman'),
+    ('SNZ403', 'Garbacho Yano'),
+
+    # CAMIONES
+    ('TRD786', 'Enrique'),
+    ('WPS788', 'Hugo'),
+    ('S7D237', ''),
+    ('ZNE433', 'Cayetano'),
+    ('WCE428', 'Perucho'),
+    ('HID758', 'Perucho'),
+    ('OYE230', 'Orlando'),
+    ('SYB606', 'Juvenal'),
+    ('WEJ518', 'Juvenal'),
+    ('WWJ896', 'Pangora'),
+    ('VSB077', 'Chiva Fabio'),
+    ('KES585', ''),
 ]
 
-def importar_clientes_cuaderno_dia_28():
-    """Carga automáticamente los registros del cuaderno con cobro el día 28.
-
-    Es segura para nuevos despliegues: si el cliente ya está en Firestore pero
-    no está en el SQLite local, lo recupera desde Firestore en vez de ocultarlo.
+def reemplazar_clientes_cuaderno_dia_18():
     """
-    creados = 0
-    recuperados = 0
-    vistos = set()
+    Reemplaza UNA sola vez la lista de Cuentas Clientes por los registros
+    de las fotos del cuaderno indicadas por el usuario.
+    Borra también los movimientos de esas cuentas para no dejar huérfanos.
+    No toca ninguna otra tabla del sistema.
+    """
+    MARCADOR = 'cuentas_cuaderno_reemplazadas_dia18_v1'
+    try:
+        ya_hecho = firestore_db.collection('_config').document(MARCADOR).get()
+        if ya_hecho.exists:
+            return 0
 
-    for placa, nombre_lectura in CLIENTES_CUADERNO_DIA_28:
-        placa = (placa or '').strip().upper().replace(' ', '')
-        if not placa or placa in vistos:
-            continue
-        vistos.add(placa)
-
-        # 1) Si ya está en SQLite, no tocar el registro existente.
-        existente = ClienteCuenta.query.filter_by(placa=placa).first()
-        if existente:
-            continue
-
-        # 2) Si está en Firestore, recuperarlo a SQLite para que aparezca en la web.
-        datos_nube = None
-        try:
-            resultados = list(
-                firestore_db.collection('clientes_cuenta')
-                .where('placa', '==', placa)
-                .limit(1)
-                .stream()
-            )
-            if resultados:
-                datos_nube = resultados[0].to_dict() or {}
-        except Exception as e:
-            print(f'FIRESTORE CHECK ERROR ({placa}): {e}')
-
-        if datos_nube:
-            nombre = (datos_nube.get('nombre') or nombre_lectura or '').strip() or f'Cliente {placa}'
-            cliente = ClienteCuenta(
-                nombre=nombre,
-                telefono=datos_nube.get('telefono'),
-                placa=placa,
-                tipo_vehiculo=datos_nube.get('tipo_vehiculo'),
-                observaciones=datos_nube.get('observaciones') or 'Importado del cuaderno - cobro día 28',
-                tarifa_mensual=int(datos_nube.get('tarifa_mensual') or 0),
-                dia_cobro=int(datos_nube.get('dia_cobro') or 28),
-                activo=bool(datos_nube.get('activo', True)),
-            )
-            db.session.add(cliente)
-            recuperados += 1
-            continue
-
-        # 3) No existe en ninguno de los dos sitios: crear el registro nuevo.
-        cliente = ClienteCuenta(
-            nombre=(nombre_lectura or '').strip() or f'Cliente {placa}',
-            telefono=None,
-            placa=placa,
-            tipo_vehiculo=None,
-            observaciones='Importado del cuaderno - cobro día 28',
-            tarifa_mensual=0,
-            dia_cobro=28,
-            activo=True,
-        )
-        db.session.add(cliente)
+        # Borrar movimientos y clientes locales de Cuentas Clientes.
+        movimientos = MovimientoCuenta.query.all()
+        for mov in movimientos:
+            db.session.delete(mov)
         db.session.flush()
-        firestore_guardar('clientes_cuenta', cliente.id, {
-            'id': cliente.id,
-            'nombre': cliente.nombre,
-            'telefono': cliente.telefono,
-            'placa': cliente.placa,
-            'tipo_vehiculo': cliente.tipo_vehiculo,
-            'observaciones': cliente.observaciones,
-            'tarifa_mensual': cliente.tarifa_mensual,
-            'dia_cobro': cliente.dia_cobro,
-            'activo': cliente.activo,
-            'fecha_creacion': cliente.fecha_creacion.isoformat() if cliente.fecha_creacion else None
-        })
-        creados += 1
 
-    if creados or recuperados:
+        clientes = ClienteCuenta.query.all()
+        for cliente in clientes:
+            db.session.delete(cliente)
         db.session.commit()
 
-    print(f'CARGA CUADERNO DIA 28: nuevos={creados}, recuperados_desde_firestore={recuperados}')
-    return creados + recuperados
+        # Borrar únicamente los documentos de clientes_cuenta de Firestore.
+        try:
+            docs = list(firestore_db.collection('clientes_cuenta').stream())
+            for doc in docs:
+                firestore_db.collection('clientes_cuenta').document(doc.id).delete()
+        except Exception as e:
+            print(f'FIRESTORE LIMPIEZA clientes_cuenta ERROR: {e}')
+
+        creados = 0
+        vistos = set()
+
+        for placa, nombre in CLIENTES_CUADERNO_DIA_18:
+            placa = (placa or '').strip().upper()
+            if not placa or placa in vistos:
+                continue
+            vistos.add(placa)
+
+            cliente = ClienteCuenta(
+                nombre=(nombre or '').strip() or f'Cliente {placa}',
+                telefono=None,
+                placa=placa,
+                tipo_vehiculo=None,
+                observaciones='Importado del cuaderno - cobro día 18',
+                tarifa_mensual=0,
+                dia_cobro=18,
+                activo=True,
+            )
+            db.session.add(cliente)
+            db.session.flush()
+
+            firestore_guardar('clientes_cuenta', cliente.id, {
+                'id': cliente.id,
+                'nombre': cliente.nombre,
+                'telefono': cliente.telefono,
+                'placa': cliente.placa,
+                'tipo_vehiculo': cliente.tipo_vehiculo,
+                'observaciones': cliente.observaciones,
+                'tarifa_mensual': cliente.tarifa_mensual,
+                'dia_cobro': cliente.dia_cobro,
+                'activo': cliente.activo,
+                'fecha_creacion': cliente.fecha_creacion.isoformat() if cliente.fecha_creacion else None
+            })
+            creados += 1
+
+        db.session.commit()
+
+        firestore_db.collection('_config').document(MARCADOR).set({
+            'version': 1,
+            'dia_cobro': 18,
+            'cantidad_registros': creados,
+            'descripcion': 'Carga maestra de motos, volquetas y camiones del cuaderno',
+            'fecha': hora_colombia().isoformat()
+        })
+
+        print(f'CUADERNO DIA 18: carga completada. Registros={creados}')
+        return creados
+
+    except Exception as e:
+        db.session.rollback()
+        print(f'CUADERNO DIA 18 ERROR: {e}')
+        raise
 
 with app.app_context():
     db.create_all()
@@ -2579,10 +2593,9 @@ with app.app_context():
     if 'dia_cobro' not in columnas_cliente:
         db.session.execute(text('ALTER TABLE cliente_cuenta ADD COLUMN dia_cobro INTEGER DEFAULT 1'))
     db.session.commit()
-    importar_clientes_cuaderno_dia_28()
+    reemplazar_clientes_cuaderno_dia_18()
 
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=False)
-
