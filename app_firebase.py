@@ -2537,7 +2537,7 @@ def reemplazar_clientes_cuaderno_dia_18():
                 placa=placa,
                 tipo_vehiculo=tipo_vehiculo,
                 observaciones='Importado del cuaderno - cobro día 18',
-                tarifa_mensual=0,
+                tarifa_mensual={'moto': 30000, 'carro': 65000, 'volqueta': 100000, 'camion': 100000}.get(tipo_vehiculo, 0),
                 dia_cobro=18,
                 activo=True,
             )
@@ -2576,6 +2576,205 @@ def reemplazar_clientes_cuaderno_dia_18():
         print(f'CUADERNO DIA 18 ERROR: {e}')
         raise
 
+
+# --- AUTOMOVILES / CARROS PARTICULARES DEL CUADERNO: DIA 18 ---
+# Se agregan sin borrar ni modificar las listas ya cargadas.
+CLIENTES_CUADERNO_AUTOMOVILES_DIA_18 = [
+    ('KMI403', 'Felipe', 'carro'),
+    ('IZE472', '', 'carro'),
+    ('LAE163', 'Fátima', 'carro'),
+    ('KAG722', '', 'carro'),
+    ('ITK783', '', 'carro'),
+    ('BGE855', '', 'carro'),
+    ('EHK899', 'Asdrúbal', 'carro'),
+    ('EUK326', '', 'carro'),
+    ('DKW391', '', 'carro'),
+    ('DLN055', '', 'carro'),
+    ('FTR819', '', 'carro'),
+    ('FGP777', '', 'carro'),
+    ('LFU059', '', 'carro'),
+    ('BZD913', '', 'carro'),
+    ('EIL218', '', 'carro'),
+    ('OAG641', 'Mono gasolinera', 'carro'),
+    ('MFW132', 'Juaco', 'carro'),
+    ('JJZ976', '', 'carro'),
+    ('YIZ550', 'Cayano', 'carro'),
+    ('WNU488', 'Luis Fernando', 'carro'),
+    ('DXR762', '', 'carro'),
+    ('EOT871', '', 'carro'),
+    ('EKK969', '', 'carro'),
+    ('JCF362', '', 'carro'),
+    ('KAQ612', 'Erquin', 'carro'),
+    ('RIH372', 'Víctor', 'carro'),
+    ('ARP412', '', 'carro'),
+    ('AIZ227', 'PROFE', 'carro'),
+    ('SND77A', 'Sargento', 'carro'),
+]
+
+def agregar_automoviles_cuaderno_dia_18():
+    """Agrega los 29 automóviles del cuaderno sin tocar las listas existentes."""
+    MARCADOR = 'cuentas_cuaderno_automoviles_dia18_v1'
+    try:
+        ya_hecho = firestore_db.collection('_config').document(MARCADOR).get()
+        if ya_hecho.exists:
+            return 0
+
+        existentes = {
+            (c.placa or '').strip().upper().replace(' ', '')
+            for c in ClienteCuenta.query.all()
+            if c.placa
+        }
+
+        creados = 0
+        vistos = set()
+        for placa, nombre, tipo_vehiculo in CLIENTES_CUADERNO_AUTOMOVILES_DIA_18:
+            placa = (placa or '').strip().upper().replace(' ', '')
+            if not placa or placa in vistos:
+                continue
+            vistos.add(placa)
+            if placa in existentes:
+                continue
+
+            cliente = ClienteCuenta(
+                nombre=(nombre or '').strip() or f'Cliente {placa}',
+                telefono=None,
+                placa=placa,
+                tipo_vehiculo=tipo_vehiculo,
+                observaciones='Importado del cuaderno - automovil particular - cobro día 18',
+                tarifa_mensual={'moto': 30000, 'carro': 65000, 'volqueta': 100000, 'camion': 100000}.get(tipo_vehiculo, 0),
+                dia_cobro=18,
+                activo=True,
+            )
+            db.session.add(cliente)
+            db.session.flush()
+
+            firestore_guardar('clientes_cuenta', cliente.id, {
+                'id': cliente.id,
+                'nombre': cliente.nombre,
+                'telefono': cliente.telefono,
+                'placa': cliente.placa,
+                'tipo_vehiculo': cliente.tipo_vehiculo,
+                'observaciones': cliente.observaciones,
+                'tarifa_mensual': cliente.tarifa_mensual,
+                'dia_cobro': cliente.dia_cobro,
+                'activo': cliente.activo,
+                'fecha_creacion': cliente.fecha_creacion.isoformat() if cliente.fecha_creacion else None
+            })
+            creados += 1
+
+        db.session.commit()
+        firestore_db.collection('_config').document(MARCADOR).set({
+            'version': 1,
+            'dia_cobro': 18,
+            'cantidad_registros': creados,
+            'descripcion': 'Automóviles particulares del cuaderno',
+            'fecha': hora_colombia().isoformat()
+        })
+        print(f'CUADERNO AUTOMOVILES DIA 18: carga completada. Nuevos={creados}')
+        return creados
+    except Exception as e:
+        db.session.rollback()
+        print(f'CUADERNO AUTOMOVILES DIA 18 ERROR: {e}')
+        raise
+
+
+# --- CARGA MAESTRA FINAL DEL CUADERNO: DÍA 18 ---
+# Reemplaza SOLO las Cuentas Clientes con las cuatro listas del cuaderno.
+# Tarifas mensuales: motos $30.000, automóviles particulares $65.000,
+# volquetas $100.000 y camiones $100.000. Día de cobro: 18.
+CLIENTES_CUADERNO_FINAL_DIA_18 = (
+    CLIENTES_CUADERNO_DIA_18
+    + CLIENTES_CUADERNO_AUTOMOVILES_DIA_18
+)
+
+TARIFAS_CUADERNO_DIA_18 = {
+    'moto': 30000,
+    'carro': 65000,
+    'volqueta': 100000,
+    'camion': 100000,
+}
+
+def reemplazar_clientes_cuaderno_final_dia_18():
+    """Carga final, idempotente y separada por tipo, de las cuatro listas."""
+    MARCADOR = 'cuentas_cuaderno_final_dia18_v3_4tipos_tarifas'
+    try:
+        ya_hecho = firestore_db.collection('_config').document(MARCADOR).get()
+        if ya_hecho.exists:
+            return 0
+
+        # Solo limpia Cuentas Clientes y sus movimientos; no toca parqueadero,
+        # caja, gastos, lavado ni las demás tablas del sistema.
+        for mov in MovimientoCuenta.query.all():
+            db.session.delete(mov)
+        db.session.flush()
+        for cliente in ClienteCuenta.query.all():
+            db.session.delete(cliente)
+        db.session.commit()
+
+        try:
+            docs = list(firestore_db.collection('clientes_cuenta').stream())
+            for doc in docs:
+                firestore_db.collection('clientes_cuenta').document(doc.id).delete()
+        except Exception as e:
+            print(f'FIRESTORE LIMPIEZA FINAL clientes_cuenta ERROR: {e}')
+
+        creados = 0
+        vistos = set()
+        por_tipo = {'moto': 0, 'carro': 0, 'volqueta': 0, 'camion': 0}
+
+        for placa, nombre, tipo_vehiculo in CLIENTES_CUADERNO_FINAL_DIA_18:
+            placa = (placa or '').strip().upper().replace(' ', '')
+            if not placa or placa in vistos:
+                continue
+            vistos.add(placa)
+
+            tarifa = TARIFAS_CUADERNO_DIA_18.get(tipo_vehiculo, 0)
+            cliente = ClienteCuenta(
+                nombre=(nombre or '').strip() or f'Cliente {placa}',
+                telefono=None,
+                placa=placa,
+                tipo_vehiculo=tipo_vehiculo,
+                observaciones='Importado del cuaderno - cobro día 18',
+                tarifa_mensual=tarifa,
+                dia_cobro=18,
+                activo=True,
+            )
+            db.session.add(cliente)
+            db.session.flush()
+
+            firestore_guardar('clientes_cuenta', cliente.id, {
+                'id': cliente.id,
+                'nombre': cliente.nombre,
+                'telefono': cliente.telefono,
+                'placa': cliente.placa,
+                'tipo_vehiculo': cliente.tipo_vehiculo,
+                'observaciones': cliente.observaciones,
+                'tarifa_mensual': cliente.tarifa_mensual,
+                'dia_cobro': cliente.dia_cobro,
+                'activo': cliente.activo,
+                'fecha_creacion': cliente.fecha_creacion.isoformat() if cliente.fecha_creacion else None
+            })
+            creados += 1
+            if tipo_vehiculo in por_tipo:
+                por_tipo[tipo_vehiculo] += 1
+
+        db.session.commit()
+        firestore_db.collection('_config').document(MARCADOR).set({
+            'version': 3,
+            'dia_cobro': 18,
+            'tarifas': TARIFAS_CUADERNO_DIA_18,
+            'cantidad_registros': creados,
+            'por_tipo': por_tipo,
+            'descripcion': 'Carga final del cuaderno: motos, automóviles particulares, volquetas y camiones',
+            'fecha': hora_colombia().isoformat()
+        })
+        print(f'CUADERNO FINAL DIA 18: registros={creados}, por_tipo={por_tipo}')
+        return creados
+    except Exception as e:
+        db.session.rollback()
+        print(f'CUADERNO FINAL DIA 18 ERROR: {e}')
+        raise
+
 with app.app_context():
     db.create_all()
     # Migración simple para instalaciones SQLite existentes: agrega los nuevos campos
@@ -2593,7 +2792,7 @@ with app.app_context():
     if 'dia_cobro' not in columnas_cliente:
         db.session.execute(text('ALTER TABLE cliente_cuenta ADD COLUMN dia_cobro INTEGER DEFAULT 1'))
     db.session.commit()
-    reemplazar_clientes_cuaderno_dia_18()
+    reemplazar_clientes_cuaderno_final_dia_18()
 
 if __name__ == '__main__':
     with app.app_context():
