@@ -2456,6 +2456,86 @@ CLIENTES_MOTOS_DIA_18 = [
     ('ERY57F', ''),
 ]
 
+
+# --- NUEVAS MOTOS DE LAS ÚLTIMAS FOTOS DEL CUADERNO ---
+# Se agregan SIN borrar ni modificar clientes existentes.
+# Los registros que ya existen por placa se dejan intactos.
+CLIENTES_MOTOS_ULTIMA_LISTA = [
+    ('SQU31E', 'Canela'),
+    ('LH248B', 'Prichan'),
+    ('QWR62D', 'Master'),
+    ('VER52D', 'Juli'),
+    ('ALG57D', 'Cuca Liberso'),
+    ('OBK38F', 'Meliza'),
+    ('QDC67D', 'Hermana Flarmelo'),
+    ('FYJ42G', 'Hijo Naro'),
+    ('MQX51G', 'Gisela'),
+    ('IGA22F', 'Hugo Don Jorge'),
+    ('EHK681', 'Pure XTZ 150'),
+    ('EJL51G', 'Mario Herrera'),
+    ('YDU88D', 'Oscar'),
+    ('PHD53F', 'Esposa Diego'),
+    ('JKA77D', 'Hijo de la Claudia'),
+    ('PAL87F', 'Moto Azul'),
+    ('SSD06D', 'Libero'),
+    ('HGS78C', 'Honda Negra'),
+    ('FZS29C', 'Ricardo'),
+    ('KHU36E', 'Primo'),
+    ('LNU90E', 'Yuli'),
+    ('EPX64F', 'Nanchon'),
+    ('EES86E', 'Pope Luis'),
+    ('ANI79F', 'Hernando'),
+    ('MNY22D', 'Hugo'),
+    ('Z66AFE', 'Lucho'),
+    ('JOA634', 'Daniel'),
+]
+
+def importar_motos_ultima_lista():
+    """Agrega únicamente las motos de las últimas fotos; nunca elimina ni reemplaza existentes."""
+    creados = 0
+    vistos = set()
+    for placa, nombre_lectura in CLIENTES_MOTOS_ULTIMA_LISTA:
+        placa = (placa or '').strip().upper().replace(' ', '')
+        if not placa or placa in vistos:
+            continue
+        vistos.add(placa)
+
+        # MUY IMPORTANTE: si ya existe, no se modifica absolutamente nada.
+        existente = ClienteCuenta.query.filter_by(placa=placa).first()
+        if existente:
+            continue
+
+        cliente = ClienteCuenta(
+            nombre=(nombre_lectura or '').strip() or f'Cliente {placa}',
+            telefono=None,
+            placa=placa,
+            tipo_vehiculo='moto',
+            observaciones='Agregado de la última lista del cuaderno - motos',
+            tarifa_mensual=30000,
+            dia_cobro=18,
+            activo=True,
+        )
+        db.session.add(cliente)
+        db.session.flush()
+        firestore_guardar('clientes_cuenta', cliente.id, {
+            'id': cliente.id,
+            'nombre': cliente.nombre,
+            'telefono': cliente.telefono,
+            'placa': cliente.placa,
+            'tipo_vehiculo': cliente.tipo_vehiculo,
+            'observaciones': cliente.observaciones,
+            'tarifa_mensual': cliente.tarifa_mensual,
+            'dia_cobro': cliente.dia_cobro,
+            'activo': cliente.activo,
+            'fecha_creacion': cliente.fecha_creacion.isoformat() if cliente.fecha_creacion else None
+        })
+        creados += 1
+
+    if creados:
+        db.session.commit()
+    print(f'CARGA ULTIMA LISTA MOTOS: nuevos={creados}, lista={len(CLIENTES_MOTOS_ULTIMA_LISTA)}')
+    return creados
+
 def importar_motos_dia_18():
     """Carga las motos de la foto del cuaderno con cobro el día 18."""
     creados = 0
@@ -2792,6 +2872,7 @@ with app.app_context():
     db.session.commit()
     sincronizar_cuentas_desde_firestore()
     importar_motos_dia_18()
+    importar_motos_ultima_lista()
     importar_clientes_cuaderno_dia_28()
 
 if __name__ == '__main__':
