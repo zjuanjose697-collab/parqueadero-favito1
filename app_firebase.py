@@ -2902,7 +2902,8 @@ with app.app_context():
     if 'dia_cobro' not in columnas_cliente:
         db.session.execute(text('ALTER TABLE cliente_cuenta ADD COLUMN dia_cobro INTEGER DEFAULT 1'))
     db.session.commit()
-    reemplazar_clientes_cuaderno_final_dia_18()
+    # IMPORTANTE: NO reemplazar ni borrar las cuentas existentes.
+    # Solo se agregan las placas nuevas de OTROS que aún no existan.
     agregar_otros_cuaderno_dia_18()
 
 if __name__ == '__main__':
