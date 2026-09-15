@@ -2775,6 +2775,116 @@ def reemplazar_clientes_cuaderno_final_dia_18():
         print(f'CUADERNO FINAL DIA 18 ERROR: {e}')
         raise
 
+
+# --- PLACAS ADICIONALES DEL CUADERNO: LISTA "OTROS" ---
+# Estas placas aparecen en las nuevas fotos enviadas por el usuario.
+# Se agregan ÚNICAMENTE si no existen ya en Cuentas Clientes.
+# No modifican ni eliminan las listas existentes de motos, automóviles,
+# volquetas ni camiones. Como no se indicó una tarifa para "Otros",
+# quedan con tarifa $0 y día de cobro 18 para poder clasificarlas/editarlas después.
+CLIENTES_CUADERNO_OTROS_DIA_18 = [
+    ('OTE585', '', 'otro'),
+    ('QIT974', 'Don Jorge', 'otro'),
+    ('WCO582', 'Mono Medellín', 'otro'),
+    ('SNO442', 'Hijo Berto', 'otro'),
+    ('WFU533', '', 'otro'),
+    ('TDZ657', 'Bombón', 'otro'),
+    ('WCO548', 'Malacara', 'otro'),
+    ('LKW683', 'Ochoa', 'otro'),
+    ('GOZ256', 'Fika', 'otro'),
+    ('SMO555', 'Caiman', 'otro'),
+    ('KZL703', 'Enrique', 'otro'),
+    ('OUE087', 'Bombero', 'otro'),
+    ('LAR163', 'Doña Fatima', 'otro'),
+    ('OVG504', 'Camioneta gris', 'otro'),
+    ('OIJ102', 'Berto', 'otro'),
+    ('WBG969', 'Miguel', 'otro'),
+    ('XCP914', 'Elkin', 'otro'),
+    ('HIJ335', 'Doncel', 'otro'),
+    ('JOA634', 'Chevrolet', 'otro'),
+    ('KKK969', 'Pele', 'otro'),
+    ('CPY709', '', 'otro'),
+    ('KXF46C', '', 'otro'),
+    ('HFM074', 'Diego', 'otro'),
+    ('DED506', 'Luis', 'otro'),
+    ('GPR32A', 'Luis', 'otro'),
+    ('PDD06B', '', 'otro'),
+    ('ABH341', 'Ramon', 'otro'),
+    ('BWU919', 'Bety', 'otro'),
+    ('AEP422', 'Humberto', 'otro'),
+    ('JFU153', 'Callano', 'otro'),
+    ('LBU141', 'Victor', 'otro'),
+    ('ITZ938', 'Peluza', 'otro'),
+    ('DMS121', 'Don Carlos', 'otro'),
+    ('BYE670', '', 'otro'),
+    ('TIJ059', '', 'otro'),
+]
+
+def agregar_otros_cuaderno_dia_18():
+    """Agrega las placas adicionales como OTROS, sin tocar registros existentes."""
+    MARCADOR = 'cuentas_cuaderno_otros_dia18_v1'
+    try:
+        ya_hecho = firestore_db.collection('_config').document(MARCADOR).get()
+        if ya_hecho.exists:
+            return 0
+
+        existentes = {
+            (c.placa or '').strip().upper().replace(' ', '')
+            for c in ClienteCuenta.query.all()
+            if c.placa
+        }
+        vistos = set()
+        creados = 0
+
+        for placa, nombre, tipo_vehiculo in CLIENTES_CUADERNO_OTROS_DIA_18:
+            placa = (placa or '').strip().upper().replace(' ', '')
+            if not placa or placa in vistos or placa in existentes:
+                continue
+            vistos.add(placa)
+
+            cliente = ClienteCuenta(
+                nombre=(nombre or '').strip() or f'Cliente {placa}',
+                telefono=None,
+                placa=placa,
+                tipo_vehiculo='otro',
+                observaciones='Importado del cuaderno - lista OTROS - cobro día 18',
+                tarifa_mensual=0,
+                dia_cobro=18,
+                activo=True,
+            )
+            db.session.add(cliente)
+            db.session.flush()
+
+            firestore_guardar('clientes_cuenta', cliente.id, {
+                'id': cliente.id,
+                'nombre': cliente.nombre,
+                'telefono': cliente.telefono,
+                'placa': cliente.placa,
+                'tipo_vehiculo': cliente.tipo_vehiculo,
+                'observaciones': cliente.observaciones,
+                'tarifa_mensual': cliente.tarifa_mensual,
+                'dia_cobro': cliente.dia_cobro,
+                'activo': cliente.activo,
+                'fecha_creacion': cliente.fecha_creacion.isoformat() if cliente.fecha_creacion else None
+            })
+            creados += 1
+
+        db.session.commit()
+        firestore_db.collection('_config').document(MARCADOR).set({
+            'version': 1,
+            'dia_cobro': 18,
+            'tarifa_mensual': 0,
+            'cantidad_registros': creados,
+            'descripcion': 'Placas adicionales del cuaderno clasificadas como OTROS',
+            'fecha': hora_colombia().isoformat()
+        })
+        print(f'CUADERNO OTROS DIA 18: nuevos={creados}')
+        return creados
+    except Exception as e:
+        db.session.rollback()
+        print(f'CUADERNO OTROS DIA 18 ERROR: {e}')
+        raise
+
 with app.app_context():
     db.create_all()
     # Migración simple para instalaciones SQLite existentes: agrega los nuevos campos
@@ -2793,6 +2903,7 @@ with app.app_context():
         db.session.execute(text('ALTER TABLE cliente_cuenta ADD COLUMN dia_cobro INTEGER DEFAULT 1'))
     db.session.commit()
     reemplazar_clientes_cuaderno_final_dia_18()
+    agregar_otros_cuaderno_dia_18()
 
 if __name__ == '__main__':
     with app.app_context():
