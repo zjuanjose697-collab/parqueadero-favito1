@@ -1151,7 +1151,7 @@ HTML_TEMPLATE = """
                                                     <option value="Efectivo">Efectivo</option>
                                                     <option value="Transferencia">Transferencia</option>
                                                 </select>
-                                                <div class="alert alert-info mt-3 mb-0 py-2 small">El pago se registra como ingreso en caja y se descuenta del saldo de esta cuenta.</div>
+                                                <div class="alert alert-info mt-3 mb-0 py-2 small">El pago se registra como ingreso en caja y se descuenta del saldo de esta cuenta. Si haces un abono antes de generar la mensualidad, el abono queda aplicado a esa cuota.</div>
                                             </div>
                                             <div class="modal-footer border-secondary">
                                                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -1405,8 +1405,11 @@ def index():
                 saldos_cuenta[mov.cliente_id] += mov.monto
             elif mov.tipo == 'abono':
                 saldos_cuenta[mov.cliente_id] -= mov.monto
-    # Un saldo nunca se muestra negativo; los pagos de más quedan registrados,
-    # pero el cliente se considera al día.
+    # Un saldo nunca se muestra negativo; los pagos de más quedan registrados.
+    # Además, si un cliente abona ANTES de que se genere su cuota mensual,
+    # ese abono se toma como parte de la cuota y se muestra lo que todavía
+    # falta por pagar. Ejemplo: cuota $30.000 + abono $10.000 = faltan $20.000.
+    # No se modifica ningún movimiento existente ni se elimina información.
     for cid in saldos_cuenta:
         saldos_cuenta[cid] = max(0, saldos_cuenta[cid])
     ahora = hora_colombia()
@@ -1422,6 +1425,18 @@ def index():
         cobro_mes = next((m for m in movs if m.tipo == 'cargo' and m.fecha >= inicio_mes and m.fecha < siguiente_mes and m.concepto.startswith('Cuota mensual')), None)
         ultimo_abono = next((m.fecha for m in movs if m.tipo == 'abono'), None)
         saldo_actual = saldos_cuenta.get(c.id, 0)
+
+        # ABONOS ANTICIPADOS: si todavía no existe el cargo mensual del mes
+        # actual y no hay una deuda pendiente, el abono se aplica visualmente
+        # contra la próxima cuota mensual. Así un abono de $10.000 sobre una
+        # cuota de $30.000 deja $20.000 por cobrar.
+        if saldo_actual == 0 and not cobro_mes and (c.tarifa_mensual or 0) > 0:
+            total_cargos = sum(m.monto for m in movs if m.tipo == 'cargo')
+            total_abonos = sum(m.monto for m in movs if m.tipo == 'abono')
+            abono_a_favor = max(0, total_abonos - total_cargos)
+            if abono_a_favor > 0:
+                saldo_actual = max(0, (c.tarifa_mensual or 0) - abono_a_favor)
+
         # Próximo cobro: si ya hubo un abono, se toma un mes después del último
         # pago; si nunca ha pagado, se usa el día de cobro configurado.
         if ultimo_abono:
